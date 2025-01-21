@@ -1,6 +1,9 @@
 *.fcs
 *.h5ad
 *.h5
+*.pdf
+*.svg
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
