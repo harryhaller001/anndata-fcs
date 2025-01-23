@@ -28,17 +28,13 @@ jobs:
 
         # Matrix testing
         strategy:
-            # fail-fast: false
+            fail-fast: false
             matrix:
                 # Check for all python versions >=3.8
 
                 # For OS support of actions check out:
                 # https://github.com/actions/runner-images/issues/10636
                 include:
-                    -   os: ubuntu-22.04
-                        python: "3.8"
-                    -   os: ubuntu-22.04
-                        python: "3.9"
                     -   os: ubuntu-24.04
                         python: "3.10"
                     -   os: ubuntu-24.04
