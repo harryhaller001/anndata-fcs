@@ -28,6 +28,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "nbsphinx",
     "autoapi.extension",
+    "sphinx.ext.napoleon",
 ]
 
 # Mapping for intersphinx extension
@@ -76,6 +77,10 @@ autodoc_typehints = "description"
 
 # Configuration of sphinx.ext.coverage
 coverage_show_missing_items = True
+
+# https://www.sphinx-doc.org/en/master/usage/extensions/napoleon.html
+napoleon_google_docstring = True
+napoleon_attr_annotations = True
 
 
 # Configurate sphinx rtd theme

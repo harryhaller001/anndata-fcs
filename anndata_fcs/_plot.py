@@ -1,4 +1,5 @@
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from collections.abc import Sequence
+from typing import Dict, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,24 +10,50 @@ from matplotlib.axes import Axes
 from matplotlib.patches import Polygon
 
 from ._convert import fcs_to_dataframe
+from ._types import NumberType, ScaleOptions
 
 
 def scatter(
     data: Union[pd.DataFrame, FlowData, AnnData],
     x: str,
     y: str,
-    xscale: Literal["linear", "log", "symlog", "logit"] = "log",
-    yscale: Literal["linear", "log", "symlog", "logit"] = "log",
+    xscale: ScaleOptions = "log",
+    yscale: ScaleOptions = "log",
     density: bool = False,
-    gates: Optional[Dict[str, List[List[Union[int, float]]]]] = None,
+    gates: Optional[Dict[str, Sequence[Sequence[NumberType]]]] = None,
     gate_color: str = "black",
-    highlight: Optional[List[bool]] = None,
+    highlight: Optional[Sequence[bool]] = None,
     highlight_color: str = "red",
     color: str = "black",
     ax: Optional[Axes] = None,
     figsize: Tuple[int, int] = (5, 5),
 ) -> Axes:
-    """Plot scatter from FCS data."""
+    """Plot scatter from FCS data.
+
+    Args:
+        data (typing.Union[pandas.DataFrame, flowio.FlowData, anndata.AnnData]): Event data. Argument can be DataFrame, AnnData or FlowData instance.
+        x (str): Channel name for x coordinate.
+        y (str): Channel name for y coordinate.
+        xscale (typing.Literal["linear", "log", "symlog", "logit"], optional): Scale of x axis. Defaults to `log`.
+        yscale (typing.Literal["linear", "log", "symlog", "logit"], optional): Scale of y axis. Defaults to `log`.
+        density (bool, optional): Show denity as color. Defaults to `False`. `scipy` is required for this option.
+        gates (typing.Optional[typing.Dict[str, collections.abc[collections.abc[typing.Union[int, float]]]]], optional): Dict of gates, where the key indicated to name of the gate and the value describes to polygon. Defaults to `None`.
+        gate_color (str, optional): Color of gate. Defaults to `"black"`.
+        highlight (typing.Optional[List[bool]], optional): List of events to highlight. Defaults to `None`.
+        highlight_color (str, optional): Color of events. Defaults to `"red"`,
+        color (str): Color of default event. Defaults to `"black"`.
+        ax (typing.Optional[matplotlib.axes.Axes], optional): Matplotlib axes. Default to `None`.
+        figsize (typing.Tuple[int, int], optional): Figure size. Defaults to `(5, 5)`.
+
+    Returns:
+        matplotlib.axes.Axes: Axes instance.
+
+    Raises:
+        NotImplementedError: If `data` if other type than DataFrame, AnnData oder FlowData.
+        ImportError: If `denity=True` and `scipy` is not installed.
+        AssertionError: If length of `highlight` does not match with length of `data`.
+        AssertionError: If x and y gate boundaries could not be calculated.
+    """
     if ax is None:
         _, ax = plt.subplots(figsize=figsize)
 
