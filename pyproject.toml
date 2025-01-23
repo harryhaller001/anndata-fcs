@@ -145,7 +145,7 @@ warn_unused_configs = true
 
 # Ignore libs which are not PEP 561 compliant
 [[tool.mypy.overrides]]
-module = [ "anndata", "flowio", "scipy" ]
+module = [ "anndata", "flowio", "scipy", "scanpy" ]
 ignore_missing_imports = true
 
 # Pytest config

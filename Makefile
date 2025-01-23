@@ -7,6 +7,7 @@ PACKAGE_NAME	= anndata-fcs
 
 PACKAGE_DIR		= $(BASE_DIR)/anndata_fcs
 TEST_DIR		= $(BASE_DIR)/test
+DATA_DIR		= $(BASE_DIR)/data
 DOCS_DIR		= $(BASE_DIR)/docs
 
 PYTHON_OPT		= python3
@@ -72,8 +73,8 @@ build: # Twine package upload and checks
 
 .PHONY : format
 format: ## Lint and format code with flake8 and black
-	@$(RUFF_OPT) format $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py
-	@$(RUFF_OPT) check --fix $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py
+	@$(RUFF_OPT) format $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py $(DATA_DIR)/generate_testing_adata.py
+	@$(RUFF_OPT) check --fix $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py $(DATA_DIR)/generate_testing_adata.py
 
 
 .PHONY: testing
@@ -89,7 +90,7 @@ testing: ## Unittest of package
 
 .PHONY: typing
 typing: ## Run static code analysis
-	@$(MYPY_OPT) $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py
+	@$(MYPY_OPT) $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py $(DATA_DIR)/generate_testing_adata.py
 
 
 
