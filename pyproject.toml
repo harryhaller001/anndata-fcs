@@ -42,6 +42,7 @@ optional-dependencies.docs = [ "furo", "nbsphinx", "sphinx", "sphinx-autoapi" ]
 # https://mypy.readthedocs.io/en/stable/config_file.html#using-a-pyproject-toml-file
 optional-dependencies.test = [
   "coverage",
+  "flit",
   "ipykernel",
   "ipython",
   "ipywidgets",
@@ -50,6 +51,7 @@ optional-dependencies.test = [
   "pytest",
   "ruff",
   "scanpy",
+  "twine",
 ]
 # Home-page = "TODO"
 # Optional dependencies for testing and docs

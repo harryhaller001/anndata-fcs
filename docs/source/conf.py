@@ -8,7 +8,7 @@ DOCS_DIR = Path(__file__).parent
 sys.path.insert(0, os.path.abspath("../../anndata_fcs"))
 
 # Project information
-project = "anndata_fcs"
+project = "anndata-fcs"
 author = "harryhaller001"
 copyright = f"{datetime.now():%Y}, {author}."
 
@@ -37,6 +37,7 @@ intersphinx_mapping = dict(
     matplotlib=("https://matplotlib.org/stable", None),
     pandas=("https://pandas.pydata.org/pandas-docs/stable/", None),
     anndata=("https://anndata.readthedocs.io/en/latest/", None),
+    flowio=("https://flowio.readthedocs.io/en/latest/", None),
 )
 
 # don't run the notebooks

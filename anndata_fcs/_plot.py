@@ -1,13 +1,18 @@
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from anndata import AnnData
+from flowio import FlowData
+from matplotlib.axes import Axes
 from matplotlib.patches import Polygon
+
+from ._convert import fcs_to_dataframe
 
 
 def scatter(
-    data: pd.DataFrame,
+    data: Union[pd.DataFrame, FlowData, AnnData],
     x: str,
     y: str,
     xscale: Literal["linear", "log", "symlog", "logit"] = "log",
@@ -18,14 +23,35 @@ def scatter(
     highlight: Optional[List[bool]] = None,
     highlight_color: str = "red",
     color: str = "black",
-):
-    _fig, _ax = plt.subplots(figsize=(5, 5))
+    ax: Optional[Axes] = None,
+    figsize: Tuple[int, int] = (5, 5),
+) -> Axes:
+    """Plot scatter from FCS data."""
+    if ax is None:
+        _, ax = plt.subplots(figsize=figsize)
+
+    formatted_data: pd.DataFrame
+
+    if isinstance(data, pd.DataFrame):
+        formatted_data = data
+    elif isinstance(data, AnnData):
+        formatted_data = pd.DataFrame(
+            data=data.X,
+            columns=data.var.index,
+            index=data.obs.index,
+        )
+    elif isinstance(data, FlowData):
+        formatted_data = fcs_to_dataframe(data)
+    else:
+        raise NotImplementedError(f"Type '{type(data).__name__}' is not supported for 'data' argument.")
+
+    assert x in formatted_data.columns and y in formatted_data.columns
 
     if density is True:
         values = np.vstack(
             [
-                data[x].sample(n=1000, random_state=1),
-                data[y].sample(n=1000, random_state=1),
+                formatted_data[x].sample(n=1000, random_state=1),
+                formatted_data[y].sample(n=1000, random_state=1),
             ]
         )
 
@@ -37,24 +63,24 @@ def scatter(
             ) from import_err
 
         kernel = stats.gaussian_kde(values)
-        density_color = kernel(np.vstack([data[x], data[y]]))
-        _ax.scatter(x=data[x], y=data[y], c=density_color, s=1, cmap="jet")
+        density_color = kernel(np.vstack([formatted_data[x], formatted_data[y]]))
+        ax.scatter(x=formatted_data[x], y=formatted_data[y], c=density_color, s=1, cmap="jet")
     else:
         if highlight is None:
-            _ax.scatter(x=data[x], y=data[y], c=color, s=1)
+            ax.scatter(x=formatted_data[x], y=formatted_data[y], c=color, s=1)
         else:
-            assert len(highlight) == len(data)
-            _ax.scatter(
-                x=data[x],
-                y=data[y],
+            assert len(highlight) == len(formatted_data)
+            ax.scatter(
+                x=formatted_data[x],
+                y=formatted_data[y],
                 c=([highlight_color if x is True else color for x in highlight]),
                 s=1,
             )
 
-    _ax.set_xscale(xscale)
-    _ax.set_yscale(yscale)
-    _ax.set_xlabel(x)
-    _ax.set_ylabel(y)
+    ax.set_xscale(xscale)
+    ax.set_yscale(yscale)
+    ax.set_xlabel(x)
+    ax.set_ylabel(y)
 
     if gates is not None:
         for gate_name, gate_edges in gates.items():
@@ -64,7 +90,7 @@ def scatter(
                 edgecolor=gate_color,
                 facecolor="none",
             )
-            _ax.add_patch(poly)
+            ax.add_patch(poly)
 
             # TODO: add different legend positions (center, top, bottom)
             # TODO: add transparrent background for annotate
@@ -96,11 +122,11 @@ def scatter(
             if xscale == "symlog" or xscale == "log":
                 annotate_x = np.exp(((np.log(xmax) - np.log(xmin)) / 2) + np.log(xmin))
 
-            _ax.annotate(
+            ax.annotate(
                 text=gate_name,
                 xy=(annotate_x, annotate_y),
                 ha="center",
                 # bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=2),
             )
 
-    return _fig, _ax
+    return ax

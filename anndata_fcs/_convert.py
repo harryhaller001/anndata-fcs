@@ -17,6 +17,8 @@ def anndata_to_fcs(adata_obj: ad.AnnData) -> flowio.FlowData:
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=ad.ImplicitModificationWarning)
+
+        # Add barcode rank to anndata object
         adata_obj.obs["barcode_rank"] = pd.Series(
             range(len(adata_obj.obs)),
             index=adata_obj.obs.index,

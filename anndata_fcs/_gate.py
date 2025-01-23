@@ -1,3 +1,4 @@
+import io
 from typing import List, Union
 
 import flowio
@@ -34,3 +35,24 @@ def gate_polygon(fdata: flowio.FlowData, x: str, y: str, polygon: List[List[Unio
         in_polygon.append(point_in_polygon(point, polygon))
 
     return in_polygon
+
+
+def gate_polygon_subset(
+    fdata: flowio.FlowData, x: str, y: str, polygon: List[List[Union[int, float]]]
+) -> flowio.FlowData:
+    """Gating polygon on flow data object and returning subset."""
+    df = fcs_to_dataframe(fdata)
+    in_polygon = gate_polygon(fdata=fdata, x=x, y=y, polygon=polygon)
+
+    assert len(df) == len(in_polygon)
+
+    # Filter out in polygon
+    df = df[in_polygon]
+
+    # convert to FlowData object
+    fcs_obj = flowio.create_fcs(
+        file_handle=io.BytesIO(),
+        event_data=df.to_numpy().flatten(),
+        channel_names=df.columns,
+    )
+    return flowio.FlowData(fcs_obj)

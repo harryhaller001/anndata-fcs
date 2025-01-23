@@ -3,9 +3,9 @@
 
 BASE_DIR		= ${PWD}
 
-PACKAGE_NAME	= anndata_fcs
+PACKAGE_NAME	= anndata-fcs
 
-PACKAGE_DIR		= $(BASE_DIR)/$(PACKAGE_NAME)
+PACKAGE_DIR		= $(BASE_DIR)/anndata_fcs
 TEST_DIR		= $(BASE_DIR)/test
 DOCS_DIR		= $(BASE_DIR)/docs
 
