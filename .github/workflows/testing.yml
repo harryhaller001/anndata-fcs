@@ -28,7 +28,7 @@ jobs:
 
         # Matrix testing
         strategy:
-            fail-fast: false
+            # fail-fast: false
             matrix:
                 # Check for all python versions >=3.8
 
@@ -81,6 +81,7 @@ jobs:
           # Install package from setup.py and static code analysis
           - name: Static code analysis
             run: |
+                mypy --install-types
                 mypy ./anndata_fcs ./docs/source/*.py ./test
 
 

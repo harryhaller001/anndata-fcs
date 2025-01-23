@@ -1,13 +1,13 @@
 import io
 import warnings
 
-import anndata as ad
 import flowio
 import numpy as np
 import pandas as pd
+from anndata import AnnData, ImplicitModificationWarning
 
 
-def anndata_to_fcs(adata: ad.AnnData) -> flowio.FlowData:
+def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
     """Create fcs object from anndata.
 
     Args:
@@ -26,7 +26,7 @@ def anndata_to_fcs(adata: ad.AnnData) -> flowio.FlowData:
     )
 
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=ad.ImplicitModificationWarning)
+        warnings.simplefilter("ignore", category=ImplicitModificationWarning)
 
         # Add barcode rank to anndata object
         adata.obs["barcode_rank"] = pd.Series(
@@ -60,7 +60,7 @@ def fcs_to_dataframe(fdata: flowio.FlowData) -> pd.DataFrame:
     )
 
 
-def fcs_to_anndata(fdata: flowio.FlowData, include_metadata: bool = True) -> ad.AnnData:
+def fcs_to_anndata(fdata: flowio.FlowData, include_metadata: bool = True) -> AnnData:
     """Converts FlowData instance to AnnData object.
 
     Args:
@@ -73,9 +73,9 @@ def fcs_to_anndata(fdata: flowio.FlowData, include_metadata: bool = True) -> ad.
     data_array = np.reshape(fdata.events, (-1, fdata.channel_count))
 
     if include_metadata is True:
-        adata = ad.AnnData(X=data_array, uns=fdata.text)
+        adata = AnnData(X=data_array, uns=fdata.text)
     else:
-        adata = ad.AnnData(X=data_array)
+        adata = AnnData(X=data_array)
 
     # Add channels as varnames
     adata.var_names = [item["PnN"] for item in fdata.channels.values()]

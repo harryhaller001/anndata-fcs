@@ -1,5 +1,5 @@
 *.fcs
-*.h5ad
+/data/*.h5ad
 *.h5
 *.pdf
 *.svg
