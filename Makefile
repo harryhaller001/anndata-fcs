@@ -73,7 +73,7 @@ build: # Twine package upload and checks
 .PHONY : format
 format: ## Lint and format code with flake8 and black
 	@$(RUFF_OPT) format $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py
-	@$(RUFF_OPT) check $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py
+	@$(RUFF_OPT) check --fix $(PACKAGE_DIR) $(TEST_DIR) $(DOCS_DIR)/source/conf.py
 
 
 .PHONY: testing

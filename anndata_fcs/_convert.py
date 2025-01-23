@@ -1,9 +1,10 @@
-import pandas as pd
-import flowio
-import numpy as np
-import anndata as ad
 import io
 import warnings
+
+import anndata as ad
+import flowio
+import numpy as np
+import pandas as pd
 
 
 def anndata_to_fcs(adata_obj: ad.AnnData) -> flowio.FlowData:

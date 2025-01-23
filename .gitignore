@@ -4,6 +4,8 @@
 *.pdf
 *.svg
 *.png
+/.ruff_cache
+/docs/coverage_report
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

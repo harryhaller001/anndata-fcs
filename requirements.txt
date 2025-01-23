@@ -88,6 +88,7 @@ numpy==1.26.4
 overrides==7.7.0
 packaging==24.2
 pandas==2.2.3
+pandas-stubs==2.2.3.241126
 pandocfilters==1.5.1
 parso==0.8.4
 patsy==1.0.1
@@ -148,6 +149,7 @@ tornado==6.4.2
 tqdm==4.67.1
 traitlets==5.14.3
 types-python-dateutil==2.9.0.20241206
+types-pytz==2024.2.0.20241221
 typing_extensions==4.12.2
 tzdata==2024.2
 umap-learn==0.5.7
