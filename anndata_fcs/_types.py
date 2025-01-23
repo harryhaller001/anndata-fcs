@@ -1,4 +1,4 @@
-from typing import Literal, Union
+from typing import Literal
 
-NumberType = Union[int, float]
+NumberType = int | float
 ScaleOptions = Literal["linear", "log", "symlog", "logit"]

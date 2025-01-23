@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from typing import Dict, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,19 +13,19 @@ from ._types import NumberType, ScaleOptions
 
 
 def scatter(
-    data: Union[pd.DataFrame, FlowData, AnnData],
+    data: pd.DataFrame | FlowData | AnnData,
     x: str,
     y: str,
     xscale: ScaleOptions = "log",
     yscale: ScaleOptions = "log",
     density: bool = False,
-    gates: Optional[Dict[str, Sequence[Sequence[NumberType]]]] = None,
+    gates: dict[str, Sequence[Sequence[NumberType]]] | None = None,
     gate_color: str = "black",
-    highlight: Optional[Sequence[bool]] = None,
+    highlight: Sequence[bool] | None = None,
     highlight_color: str = "red",
     color: str = "black",
-    ax: Optional[Axes] = None,
-    figsize: Tuple[int, int] = (5, 5),
+    ax: Axes | None = None,
+    figsize: tuple[int, int] = (5, 5),
 ) -> Axes:
     """Plot scatter from FCS data.
 
@@ -122,9 +121,9 @@ def scatter(
             # TODO: add different legend positions (center, top, bottom)
             # TODO: add transparrent background for annotate
 
-            xmin: Optional[Union[float, int]] = None
-            xmax: Optional[Union[float, int]] = None
-            ymax: Optional[Union[float, int]] = None
+            xmin: float | int | None = None
+            xmax: float | int | None = None
+            ymax: float | int | None = None
             for x_coord, y_coord in gate_edges:
                 if xmin is None:
                     xmin = x_coord

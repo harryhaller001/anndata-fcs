@@ -18,20 +18,18 @@ maintainers = [ { name = "harryhaller001", email = "harryhaller001@gmail.com" } 
 
 authors = [ { name = "harryhaller001", email = "harryhaller001@gmail.com" } ]
 
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 classifiers = [
-  "Development Status :: 3 - Alpha",
-  "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
-  "Natural Language :: English",
-  "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Typing :: Typed",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
 ]
 dynamic = [ "version" ]
 
@@ -41,17 +39,17 @@ optional-dependencies.docs = [ "furo", "nbsphinx", "sphinx", "sphinx-autoapi" ]
 # Mypy config
 # https://mypy.readthedocs.io/en/stable/config_file.html#using-a-pyproject-toml-file
 optional-dependencies.test = [
-  "coverage",
-  "flit",
-  "ipykernel",
-  "ipython",
-  "ipywidgets",
-  "mypy",
-  "pre-commit",
-  "pytest",
-  "ruff",
-  "scanpy",
-  "twine",
+    "coverage",
+    "flit",
+    "ipykernel",
+    "ipython",
+    "ipywidgets",
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "ruff",
+    "scanpy",
+    "twine",
 ]
 # Home-page = "TODO"
 # Optional dependencies for testing and docs
@@ -73,38 +71,52 @@ extend-include = [ "*.ipynb" ]
 format.docstring-code-format = true
 
 lint.select = [
-  "B",      # flake8-bugbear
-  "BLE",    # flake8-blind-except
-  "C4",     # flake8-comprehensions
-  "D",      # pydocstyle
-  "E",      # Error detected by Pycodestyle
-  "F",      # Errors detected by Pyflakes
-  "I",      # isort
-  "RUF100", # Report unused noqa directives
-  "TID",    # flake8-tidy-imports
-  "UP",     # pyupgrade
-  "W",      # Warning detected by Pycodestyle
+    "B",      # flake8-bugbear
+    "BLE",    # flake8-blind-except
+    "C4",     # flake8-comprehensions
+    "D",      # pydocstyle
+    "E",      # Error detected by Pycodestyle
+    "F",      # Errors detected by Pyflakes
+    "I",      # isort
+    "RUF100", # Report unused noqa directives
+    "TID",    # flake8-tidy-imports
+    "UP",     # pyupgrade
+    "W",      # Warning detected by Pycodestyle
 ]
 lint.ignore = [
-  "B008", # Errors from function calls in argument defaults. These are fine when the result is immutable.
-  "C408", # Ignore write dict as literal
-  "D100", # Missing docstring in public module
-  "D104", # Missing docstring in public package
-  "D105", # __magic__ methods are often self-explanatory, allow missing docstrings
-  "D107", # Missing docstring in __init__
-  # Disable one in each pair of mutually incompatible rules
-  "D203", # We don’t want a blank line before a class docstring
-  "D213", # <> We want docstrings to start immediately after the opening triple quote
-  "D400", # first line should end with a period [Bug: doesn’t work with single-line docstrings]
-  "D401", # First line should be in imperative mood; try rephrasing
-  "E501", # line too long -> we accept long comment lines; formatter gets rid of long code lines
-  "E731", # Do not assign a lambda expression, use a def -> lambda expression assignments are convenient
-  "E741", # allow I, O, l as variable names -> I is the identity matrix
+    "B008", # Errors from function calls in argument defaults. These are fine when the result is immutable.
+    "C408", # Ignore write dict as literal
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D105", # __magic__ methods are often self-explanatory, allow missing docstrings
+    "D107", # Missing docstring in __init__
+    # Disable one in each pair of mutually incompatible rules
+    "D203", # We don’t want a blank line before a class docstring
+    "D213", # <> We want docstrings to start immediately after the opening triple quote
+    "D400", # first line should end with a period [Bug: doesn’t work with single-line docstrings]
+    "D401", # First line should be in imperative mood; try rephrasing
+    "E501", # line too long -> we accept long comment lines; formatter gets rid of long code lines
+    "E731", # Do not assign a lambda expression, use a def -> lambda expression assignments are convenient
+    "E741", # allow I, O, l as variable names -> I is the identity matrix
 ]
 lint.per-file-ignores."*/__init__.py" = [ "F401" ]
 lint.per-file-ignores."docs/*" = [ "I" ]
 lint.per-file-ignores."test/*" = [ "D" ]
 lint.pydocstyle.convention = "google"
+
+[tool.pyproject-fmt]
+
+# after how many column width split arrays/dicts into multiple lines, 1 will force always
+column_width = 120
+
+# how many spaces use for indentation
+indent = 4
+
+# if false will remove unnecessary trailing ``.0``'s from version specifiers
+keep_full_version = false
+
+# maximum Python version to use when generating version specifiers
+max_supported_python = "3.12"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
@@ -119,7 +131,7 @@ testpaths = [ "test" ]
 
 xfail_strict = true
 addopts = [
-  "--import-mode=importlib", # allow using test files with same name
+    "--import-mode=importlib", # allow using test files with same name
 ]
 
 # Coverage config
@@ -147,5 +159,3 @@ warn_unused_configs = true
 [[tool.mypy.overrides]]
 module = [ "anndata", "flowio", "scipy", "scanpy" ]
 ignore_missing_imports = true
-
-# Pytest config
