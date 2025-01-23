@@ -63,7 +63,7 @@ def scatter(
         formatted_data = data
     elif isinstance(data, AnnData):
         formatted_data = pd.DataFrame(
-            data=data.X,
+            data=data.X.toarray(),
             columns=data.var.index,
             index=data.obs.index,
         )

@@ -129,7 +129,7 @@ source = [ "anndata_fcs" ]
 omit = [ "*/test/*" ]
 
 [tool.coverage.report]
-exclude_lines = [ "raise" ]
+exclude_lines = [ "raise", "except" ]
 ignore_errors = true
 
 [tool.coverage.html]

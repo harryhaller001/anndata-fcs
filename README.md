@@ -2,5 +2,4 @@
 Convert CITESeq data to FCS file
 
 TODO:
-- Add unit testing
 - update docs
