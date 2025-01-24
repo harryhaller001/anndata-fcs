@@ -35,3 +35,29 @@ jobs:
                 python -m sphinx -M doctest ./docs/source ./docs/_build
                 python -m  sphinx -M coverage ./docs/source ./docs/_build
                 python -m  sphinx -M html ./docs/source ./docs/_build
+
+
+# Setup github pages from actions
+# https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+
+        # Upload static files as artifact
+        # https://github.com/actions/upload-pages-artifact
+        -   name: Upload static files as artifact
+            id: deployment
+            uses: actions/upload-pages-artifact@v3
+            with:
+                path: ./docs/_build
+
+
+    deploy:
+        # Deployment job
+
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+        runs-on: ubuntu-latest
+        needs: docs
+        steps:
+            -   name: Deploy to GitHub Pages
+                id: deployment
+                uses: actions/deploy-pages@v4

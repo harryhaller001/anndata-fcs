@@ -11,7 +11,7 @@ Installation
 .. _setuptools: https://pypi.org/project/setuptools/
 
 
-For installation of this package you need to have Python 3.8 or newer installed. You can install ``anndata-fcs`` with ``pip``::
+For installation of this package you need to have Python 3.10 or newer installed. You can install ``anndata-fcs`` with ``pip``::
 
     pip install anndata-fcs
 

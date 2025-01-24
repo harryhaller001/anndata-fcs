@@ -75,9 +75,9 @@ jobs:
 
 
             # Install package from setup.py and static code analysis
-            #   - name: Static code analysis
-            #     run: |
-            #         mypy ./anndata_fcs ./docs/source/*.py ./test
+            -   name: Static code analysis
+                run: |
+                    mypy ./anndata_fcs ./docs/source/*.py ./test
 
 
             # Run unittest on installed package
