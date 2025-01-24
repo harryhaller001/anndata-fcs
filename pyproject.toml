@@ -53,14 +53,12 @@ optional-dependencies.test = [
     "scanpy",
     "twine",
 ]
+urls.Documentation = "https://harryhaller001.github.io/anndata-fcs/"
 # Home-page = "TODO"
 # Optional dependencies for testing and docs
 # Project urls
-
-# Entrypoints for flit
-# https://flit.pypa.io/en/latest/pyproject_toml.html#scripts-section
-# Documentation = "TODO"
-urls.Source = "https://github.com/harryhaller001/citeseq_to_fcs"
+urls.Home-page = "https://github.com/harryhaller001/anndata-fcs"
+urls.Source = "https://github.com/harryhaller001/anndata-fcs"
 
 [tool.flit.sdist]
 include = [ "anndata_fcs/" ]
