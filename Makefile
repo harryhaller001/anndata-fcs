@@ -141,3 +141,8 @@ check: install freeze format typing testing docs precommit ## Full check of pack
 precommit: ## Run precommit file
 #	@pre-commit run --all-files --verbose
 	@$(PRE_COMMIT_OPT) run --all-files
+
+
+.PHONY : open-docs
+open-docs: ## Open build docs in webbrowser
+	@$(PYTHON_OPT) -m webbrowser -t file:///${PWD}/docs/_build/html/index.html

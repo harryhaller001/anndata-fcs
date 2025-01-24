@@ -1,5 +1,12 @@
 # anndata-fcs
 
+[![codecov](https://codecov.io/gh/harryhaller001/anndata-fcs/graph/badge.svg?token=YBZE1HZ4V1)](https://codecov.io/gh/harryhaller001/anndata-fcs)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/harryhaller001/anndata-fcs/testing.yml)
+![PyPI - Version](https://img.shields.io/pypi/v/anndata-fcs)
+![PyPI - License](https://img.shields.io/pypi/l/anndata-fcs)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/anndata-fcs)
+
+
 Converting CITESeq data to FCS file format. `anndata-fcs` implements function to convert from `AnnData` object to
 `FlowData` objects, `DataFrame` objects and vice versa. For loading and generation of FCS files `anndata-fcs` uses
 the implementation of the `flowio` package.
