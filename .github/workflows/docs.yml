@@ -51,12 +51,18 @@ jobs:
 
     deploy:
         # Deployment job
+        needs: docs
+
+        permissions:
+            pages: write      # to deploy to Pages
+            id-token: write
 
         environment:
             name: github-pages
             url: ${{ steps.deployment.outputs.page_url }}
+
         runs-on: ubuntu-latest
-        needs: docs
+
         steps:
             -   name: Deploy to GitHub Pages
                 id: deployment

@@ -45,6 +45,8 @@ optional-dependencies.test = [
     "ipython",
     "ipywidgets",
     "mypy",
+    # Typing support
+    "pandas-stubs",
     "pre-commit",
     "pytest",
     "ruff",
