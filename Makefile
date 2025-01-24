@@ -42,6 +42,9 @@ install: ## install all python dependencies
 # Install dev dependencies
 	@$(PIP_OPT) install -e ".[test,docs]" --upgrade
 
+# Install precommit hook
+	@$(PRE_COMMIT_OPT) install
+
 
 .PHONY : freeze
 freeze: ## Freeze package dependencies

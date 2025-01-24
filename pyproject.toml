@@ -125,7 +125,7 @@ minversion = "7.0"
 
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
-log_level = "DEBUG"
+log_level = "INFO"
 log_cli = true
 
 python_files = "test_*.py"
