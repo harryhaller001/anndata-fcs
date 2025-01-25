@@ -58,9 +58,10 @@
     "notebook.formatOnSave.enabled": true,
     "notebook.cellFocusIndicator": "gutter",
     "notebook.lineNumbers": "on",
-    // Disable auto-formatting in toml files to disable interference with pyproject-fmt
-    "[toml]": {
-        "editor.formatOnPaste": false,
-        "editor.formatOnSave": false,
-    }
+    // https://taplo.tamasfe.dev/configuration/formatter-options.html
+    "evenBetterToml.formatter.compactArrays": false,
+    "evenBetterToml.formatter.compactInlineTables": false,
+    "evenBetterToml.formatter.compactEntries": false,
+    "evenBetterToml.formatter.indentString": "    ",
+    "evenBetterToml.formatter.columnWidth": 120,
 }

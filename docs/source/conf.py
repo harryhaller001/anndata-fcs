@@ -29,6 +29,8 @@ extensions = [
     "nbsphinx",
     "autoapi.extension",
     "sphinx.ext.napoleon",
+    "scanpydoc",
+    "sphinx_autodoc_typehints",
 ]
 
 # Mapping for intersphinx extension
@@ -84,7 +86,7 @@ napoleon_attr_annotations = True
 
 
 # Configurate sphinx rtd theme
-html_theme = "furo"
+html_theme = "scanpydoc"
 html_static_path = ["_static"]
 html_show_sphinx = False
 html_context = dict(
@@ -96,7 +98,17 @@ html_context = dict(
     github_button=True,
     show_powered_by=False,
 )
-html_title = "anndata_fcs"
+# https://sphinx-book-theme.readthedocs.io/en/stable/reference.html
+html_theme_options = dict(
+    repository_url="https://github.com/harryhaller001/anndata-fcs",
+    repository_branch="main",
+    use_download_button=True,
+    use_fullscreen_button=False,
+    use_repository_button=True,
+    collapse_navbar=False,
+)
+
+html_title = "anndata-fcs"
 html_css_files = [
     "css/custom.css",
 ]
