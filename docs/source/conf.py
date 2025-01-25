@@ -29,7 +29,6 @@ extensions = [
     "nbsphinx",
     "autoapi.extension",
     "sphinx.ext.napoleon",
-    "scanpydoc",
     "sphinx_autodoc_typehints",
 ]
 
@@ -86,7 +85,7 @@ napoleon_attr_annotations = True
 
 
 # Configurate sphinx rtd theme
-html_theme = "scanpydoc"
+html_theme = "sphinx_book_theme"
 html_static_path = ["_static"]
 html_show_sphinx = False
 html_context = dict(

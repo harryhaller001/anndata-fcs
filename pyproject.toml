@@ -35,14 +35,7 @@ dynamic = [ "version" ]
 
 dependencies = [ "anndata", "flowio", "matplotlib" ]
 
-optional-dependencies.docs = [
-    "nbsphinx",
-    "scanpydoc",
-    "sphinx",
-    "sphinx-autoapi",
-    "sphinx-autodoc-typehints",
-    "sphinx-book-theme",
-]
+optional-dependencies.docs = [ "nbsphinx", "sphinx", "sphinx-autoapi", "sphinx-autodoc-typehints", "sphinx-book-theme" ]
 # Mypy config
 # https://mypy.readthedocs.io/en/stable/config_file.html#using-a-pyproject-toml-file
 optional-dependencies.test = [
