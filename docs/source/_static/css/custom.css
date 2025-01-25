@@ -1,3 +1,16 @@
 img.sidebar-logo {
     height: 6rem;
 }
+
+/* Disable primary sidebar toggle due to dialog bug on large screens */
+
+button.sidebar-toggle.primary-toggle {
+    visibility: visible;
+}
+
+@media (min-width: 960px) {
+    button.sidebar-toggle.primary-toggle {
+        /* display: none !important; */
+        visibility: hidden;
+    }
+}
