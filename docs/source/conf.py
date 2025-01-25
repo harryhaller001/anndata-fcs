@@ -30,6 +30,8 @@ extensions = [
     "autoapi.extension",
     "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
+    # https://github.com/spatialaudio/nbsphinx/issues/24
+    "IPython.sphinxext.ipython_console_highlighting",
 ]
 
 # Mapping for intersphinx extension
