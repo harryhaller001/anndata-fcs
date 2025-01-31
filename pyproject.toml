@@ -3,8 +3,6 @@
 
 [build-system]
 build-backend = "flit_core.buildapi"
-
-# Project details
 requires = [ "flit-core>=3.2,<4" ]
 
 [project]
@@ -43,8 +41,7 @@ optional-dependencies.docs = [
     "sphinx-autodoc-typehints",
     "sphinx-book-theme",
 ]
-# Mypy config
-# https://mypy.readthedocs.io/en/stable/config_file.html#using-a-pyproject-toml-file
+
 optional-dependencies.test = [
     "coverage",
     "flit",
@@ -61,22 +58,29 @@ optional-dependencies.test = [
     "twine",
 ]
 urls.Documentation = "https://harryhaller001.github.io/anndata-fcs/"
-# Home-page = "TODO"
-# Optional dependencies for testing and docs
-# Project urls
 urls.Home-page = "https://github.com/harryhaller001/anndata-fcs"
 urls.Source = "https://github.com/harryhaller001/anndata-fcs"
 
 [tool.flit.sdist]
-include = [ "anndata_fcs/" ]
-exclude = [ "docs", "test", "coverage" ]
+include = [ "anndata_fcs/", "test/" ]
+exclude = [
+    "docs",
+    "coverage",
+    ".vscode",
+    "data",
+    ".github",
+    ".git",
+    ".pre-commit-config.yaml",
+    ".python-version",
+    "requirements.txt",
+    "Makefile",
+    ".gitignore",
+]
 
 [tool.ruff]
 line-length = 120
 extend-include = [ "*.ipynb" ]
-
 format.docstring-code-format = true
-
 lint.select = [
     "B",      # flake8-bugbear
     "BLE",    # flake8-blind-except
@@ -112,30 +116,19 @@ lint.per-file-ignores."test/*" = [ "D" ]
 lint.pydocstyle.convention = "google"
 
 [tool.pyproject-fmt]
-
-# after how many column width split arrays/dicts into multiple lines, 1 will force always
 column_width = 120
-
-# how many spaces use for indentation
 indent = 4
-
-# if false will remove unnecessary trailing ``.0``'s from version specifiers
 keep_full_version = false
-
-# maximum Python version to use when generating version specifiers
 max_supported_python = "3.12"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
 log_level = "INFO"
 log_cli = true
-
 python_files = "test_*.py"
 testpaths = [ "test" ]
-
 xfail_strict = true
 addopts = [
     "--import-mode=importlib", # allow using test files with same name
@@ -154,8 +147,7 @@ ignore_errors = true
 [tool.coverage.html]
 directory = "docs/coverage_report"
 
-# Flit sdist config
-# https://flit.pypa.io/en/latest/pyproject_toml.html#sdist-section
+# Mypy config (https://mypy.readthedocs.io/en/stable/config_file.html#using-a-pyproject-toml-file)
 
 [tool.mypy]
 python_version = "3.10"
