@@ -1,5 +1,5 @@
 
-name: Testing package
+name: Testing
 
 on:
     # Option for trigger worflow manually

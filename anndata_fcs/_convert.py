@@ -45,27 +45,37 @@ def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
     return fdata
 
 
-def fcs_to_dataframe(fdata: flowio.FlowData) -> pd.DataFrame:
+def fcs_to_dataframe(fdata: flowio.FlowData, legacy_flowio: bool = False) -> pd.DataFrame:
     """Converts FlowData instance to pandas DataFrame.
 
     Args:
         fdata (flowio.FlowData): FlowData instance to convert.
+        legacy_flowio (bool, optional): Support for legacy `flowio<1.4.0`. Defaults to `false`.
 
     Returns:
         pandas.DataFrame: Pandas dataframe.
     """
+    events_colname: str = "pnn"
+    if legacy_flowio is True:
+        events_colname = "PnN"
+
     return pd.DataFrame(
         np.reshape(fdata.events, (-1, fdata.channel_count)),
-        columns=[v["PnN"] for v in fdata.channels.values()],
+        columns=[v[events_colname] for v in fdata.channels.values()],
     )
 
 
-def fcs_to_anndata(fdata: flowio.FlowData, include_metadata: bool = True) -> AnnData:
+def fcs_to_anndata(
+    fdata: flowio.FlowData,
+    include_metadata: bool = True,
+    legacy_flowio: bool = False,
+) -> AnnData:
     """Converts FlowData instance to AnnData object.
 
     Args:
         fdata (flowio.FlowData): FlowData instance to convert.
         include_metadata (bool, optional): If `True` is adds to FCS file meta data and `.uns` of the AnnData object.
+        legacy_flowio (bool, optional): Support for legacy `flowio<1.4.0`. Defaults to `false`.
 
     Returns:
         anndata.AnnData: AnnData object.
@@ -78,6 +88,10 @@ def fcs_to_anndata(fdata: flowio.FlowData, include_metadata: bool = True) -> Ann
         adata = AnnData(X=data_array)
 
     # Add channels as varnames
-    adata.var_names = [item["PnN"] for item in fdata.channels.values()]
+    events_colname: str = "pnn"
+    if legacy_flowio is True:
+        events_colname = "PnN"
+
+    adata.var_names = [item[events_colname] for item in fdata.channels.values()]
 
     return adata

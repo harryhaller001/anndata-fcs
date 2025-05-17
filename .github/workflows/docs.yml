@@ -1,10 +1,17 @@
-name: Build documentation (python 3.10)
+name: Documentation (python 3.10)
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
+    # push:
+    #     branches: [main]
+    # pull_request:
+    #     branches: [main]
+
+    # Trigger docs update on release
+    release:
+        types: [published]
+
+    # Option for trigger worflow manually
+    workflow_dispatch:
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -54,7 +61,8 @@ jobs:
         needs: docs
 
         permissions:
-            pages: write      # to deploy to Pages
+            # required to deploy to Pages
+            pages: write
             id-token: write
 
         environment:
