@@ -109,3 +109,7 @@ ignore_errors = true
 
 [tool.coverage.html]
 directory = "coverage_report"
+
+[tool.ty]
+src.include = [ "src", "tests", "docs" ]
+src.exclude = [ "**/*.ipynb" ]
