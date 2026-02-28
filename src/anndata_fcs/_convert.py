@@ -5,6 +5,7 @@ import flowio
 import numpy as np
 import pandas as pd
 from anndata import AnnData, ImplicitModificationWarning
+from scipy import sparse
 
 
 def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
@@ -19,9 +20,12 @@ def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
     Raises:
         AssertionError: If array conversion fails.
     """
+    # Convert X to dense array if sparse
+    X_dense = adata.X.toarray() if sparse.issparse(adata.X) else np.asarray(adata.X)  # type: ignore[union-attr]
+
     fcs_obj = flowio.create_fcs(
         file_handle=io.BytesIO(),
-        event_data=np.column_stack([adata.X.toarray(), np.array(range(len(adata.obs)))]).flatten(),
+        event_data=np.column_stack([X_dense, np.array(range(len(adata.obs)))]).flatten(),
         channel_names=adata.var.index.tolist() + ["barcode_rank"],
     )
 
@@ -38,9 +42,8 @@ def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
     fdata = flowio.FlowData(fcs_obj)
 
     # Check if arrays are the same
-    assert (
-        np.reshape(fdata.events, (-1, fdata.channel_count))[:, : fdata.channel_count - 1] == adata.X.toarray()
-    ).all()
+    reshaped_events = np.reshape(fdata.events, (-1, fdata.channel_count))  # type: ignore[call-overload]
+    assert (reshaped_events[:, : fdata.channel_count - 1] == X_dense).all()
 
     return fdata
 
@@ -60,7 +63,7 @@ def fcs_to_dataframe(fdata: flowio.FlowData, legacy_flowio: bool = False) -> pd.
         events_colname = "PnN"
 
     return pd.DataFrame(
-        np.reshape(fdata.events, (-1, fdata.channel_count)),
+        np.reshape(fdata.events, (-1, fdata.channel_count)),  # type: ignore[call-overload]
         columns=[v[events_colname] for v in fdata.channels.values()],
     )
 
@@ -80,7 +83,7 @@ def fcs_to_anndata(
     Returns:
         anndata.AnnData: AnnData object.
     """
-    data_array = np.reshape(fdata.events, (-1, fdata.channel_count))
+    data_array = np.reshape(fdata.events, (-1, fdata.channel_count))  # type: ignore[call-overload]
 
     if include_metadata is True:
         adata = AnnData(X=data_array, uns=fdata.text)

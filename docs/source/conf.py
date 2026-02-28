@@ -62,7 +62,7 @@ exclude_patterns = [
 autoapi_type = "python"
 autoapi_add_toctree_entry = False
 autoapi_ignore: list[str] = ["_*.py"]
-autoapi_dirs = ["../../anndata_fcs"]
+autoapi_dirs = ["../../src/anndata_fcs"]
 autoapi_options = [
     "members",
     "undoc-members",

@@ -74,11 +74,11 @@ typing: ## Run static code analysis
 docs: ## Build sphinx docs
 	@rm -rf ./docs/_build
 
-	@$(SPHINX_OPT) -M doctest $(DOCS_DIR) $(DOCS_DIR)/_build
-	@$(SPHINX_OPT) -M coverage $(DOCS_DIR) $(DOCS_DIR)/_build
+	@$(SPHINX_OPT) -M doctest $(DOCS_DIR)/source $(DOCS_DIR)/_build
+	@$(SPHINX_OPT) -M coverage $(DOCS_DIR)/source $(DOCS_DIR)/_build
 
 # Build HTML version
-	@$(SPHINX_OPT) -M html $(DOCS_DIR) $(DOCS_DIR)/_build
+	@$(SPHINX_OPT) -M html $(DOCS_DIR)/source $(DOCS_DIR)/_build
 
 
 

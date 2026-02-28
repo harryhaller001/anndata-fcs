@@ -7,6 +7,7 @@ from anndata import AnnData
 from flowio import FlowData
 from matplotlib.axes import Axes
 from matplotlib.patches import Polygon
+from scipy import sparse
 
 from ._convert import fcs_to_dataframe
 from ._types import NumberType, ScaleOptions
@@ -61,8 +62,10 @@ def scatter(
     if isinstance(data, pd.DataFrame):
         formatted_data = data
     elif isinstance(data, AnnData):
+        # Convert X to dense array if sparse
+        X_dense = data.X.toarray() if sparse.issparse(data.X) else np.asarray(data.X)  # type: ignore[union-attr]
         formatted_data = pd.DataFrame(
-            data=data.X.toarray(),
+            data=X_dense,
             columns=data.var.index,
             index=data.obs.index,
         )

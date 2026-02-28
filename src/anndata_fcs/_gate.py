@@ -52,7 +52,7 @@ def gate_polygon(fdata: flowio.FlowData, x: str, y: str, polygon: Sequence[Seque
 
     in_polygon = []
     for point in df[[x, y]].to_numpy():
-        in_polygon.append(point_in_polygon(point, polygon))
+        in_polygon.append(point_in_polygon(tuple(point), polygon))
 
     return in_polygon
 
