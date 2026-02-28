@@ -1,6 +1,5 @@
 # anndata-fcs
 
-[![codecov](https://codecov.io/gh/harryhaller001/anndata-fcs/graph/badge.svg?token=YBZE1HZ4V1)](https://codecov.io/gh/harryhaller001/anndata-fcs)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/harryhaller001/anndata-fcs/testing.yml)
 ![PyPI - Version](https://img.shields.io/pypi/v/anndata-fcs)
 ![PyPI - License](https://img.shields.io/pypi/l/anndata-fcs)

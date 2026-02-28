@@ -36,7 +36,6 @@ optional-dependencies.docs = [
 ]
 
 optional-dependencies.test = [
-    "coverage",
     "flit",
     "ipykernel",
     "ipython",
@@ -45,6 +44,7 @@ optional-dependencies.test = [
     "pandas-stubs",
     "pre-commit",
     "pytest",
+    "pytest-cov>=7",
     "ruff",
     "scanpy",
     "twine",
@@ -86,30 +86,29 @@ indent = 4
 keep_full_version = false
 max_supported_python = "3.13"
 
-[tool.pytest.ini_options]
-minversion = "7.0"
-log_format = "%(asctime)s %(levelname)s %(message)s"
-log_date_format = "%Y-%m-%d %H:%M:%S"
-log_level = "INFO"
-log_cli = true
-python_files = "test_*.py"
-testpaths = [ "test" ]
-xfail_strict = true
-addopts = [
-    "--import-mode=importlib", # allow using test files with same name
+[tool.pytest]
+ini_options.minversion = "7.0"
+ini_options.log_format = "%(asctime)s %(levelname)s %(message)s"
+ini_options.log_date_format = "%Y-%m-%d %H:%M:%S"
+ini_options.log_level = "INFO"
+ini_options.log_cli = true
+ini_options.python_files = "test_*.py"
+ini_options.testpaths = [ "test" ]
+ini_options.xfail_strict = true
+ini_options.addopts = [
+    "--import-mode=importlib",           # allow using test files with same name
+    "--cov=src/anndata_fcs",
+    "--cov-report=html:coverage_report",
+    "--cov-report=term",
 ]
 
-[tool.coverage.run]
-source = [ "src/anndata_fcs" ]
-omit = [ "*/test/*" ]
-
-[tool.coverage.report]
-exclude_lines = [ "raise", "except" ]
-ignore_errors = true
-
-[tool.coverage.html]
-directory = "coverage_report"
+[tool.coverage]
+run.omit = [ "*/test/*" ]
+run.source = [ "src/anndata_fcs" ]
+report.exclude_lines = [ "raise" ]
+report.ignore_errors = true
+html.directory = "coverage_report"
 
 [tool.ty]
-src.include = [ "src", "tests", "docs" ]
+src.include = [ "src", "docs" ]
 src.exclude = [ "**/*.ipynb" ]
