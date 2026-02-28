@@ -33,7 +33,7 @@
     // Python config
     "python.languageServer": "Pylance",
     "python.analysis.typeCheckingMode": "off",
-    "python.defaultInterpreterPath": "./venv/bin/python",
+    "python.defaultInterpreterPath": "./.venv/bin/python",
     "[python]": {
         "editor.formatOnPaste": false,
         "editor.formatOnSaveMode": "file",
