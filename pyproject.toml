@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
 
@@ -40,7 +41,6 @@ optional-dependencies.test = [
     "ipykernel",
     "ipython",
     "ipywidgets",
-    # Typing support
     "pandas-stubs",
     "pre-commit",
     "pytest",
@@ -84,7 +84,7 @@ lint.pydocstyle.convention = "google"
 column_width = 120
 indent = 4
 keep_full_version = false
-max_supported_python = "3.13"
+max_supported_python = "3.14"
 
 [tool.pytest]
 ini_options.minversion = "7.0"
