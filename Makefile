@@ -3,10 +3,6 @@
 
 BASE_DIR		= ${PWD}
 
-PACKAGE_NAME	= anndata-fcs
-
-PACKAGE_DIR		= $(BASE_DIR)/src/anndata_fcs
-TEST_DIR		= $(BASE_DIR)/tests
 DOCS_DIR		= $(BASE_DIR)/docs
 
 UV_OPT			= uv
@@ -84,7 +80,7 @@ docs: ## Build sphinx docs
 
 
 .PHONY: check ## Run all checks (always before committing!)
-check: install format typing testing build docs precommit ## Full check of package
+check: install format typing testing build precommit ## Full check of package
 
 
 

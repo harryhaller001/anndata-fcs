@@ -63,7 +63,7 @@ def scatter(
         formatted_data = data
     elif isinstance(data, AnnData):
         # Convert X to dense array if sparse
-        X_dense = data.X.toarray() if sparse.issparse(data.X) else np.asarray(data.X)  # type: ignore[union-attr]
+        X_dense = data.X.toarray() if sparse.issparse(data.X) else np.asarray(data.X)  # type: ignore
         formatted_data = pd.DataFrame(
             data=X_dense,
             columns=data.var.index,

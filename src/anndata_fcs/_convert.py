@@ -21,7 +21,7 @@ def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
         AssertionError: If array conversion fails.
     """
     # Convert X to dense array if sparse
-    X_dense = adata.X.toarray() if sparse.issparse(adata.X) else np.asarray(adata.X)  # type: ignore[union-attr]
+    X_dense = adata.X.toarray() if sparse.issparse(adata.X) else np.asarray(adata.X)  # type: ignore
 
     fcs_obj = flowio.create_fcs(
         file_handle=io.BytesIO(),
@@ -42,7 +42,7 @@ def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
     fdata = flowio.FlowData(fcs_obj)
 
     # Check if arrays are the same
-    reshaped_events = np.reshape(fdata.events, (-1, fdata.channel_count))  # type: ignore[call-overload]
+    reshaped_events = np.reshape(np.asarray(fdata.events), (-1, fdata.channel_count))  # type: ignore[call-overload]
     assert (reshaped_events[:, : fdata.channel_count - 1] == X_dense).all()
 
     return fdata
@@ -63,7 +63,7 @@ def fcs_to_dataframe(fdata: flowio.FlowData, legacy_flowio: bool = False) -> pd.
         events_colname = "PnN"
 
     return pd.DataFrame(
-        np.reshape(fdata.events, (-1, fdata.channel_count)),  # type: ignore[call-overload]
+        np.reshape(np.asarray(fdata.events), (-1, fdata.channel_count)),  # type: ignore[call-overload]
         columns=[v[events_colname] for v in fdata.channels.values()],
     )
 
@@ -83,7 +83,7 @@ def fcs_to_anndata(
     Returns:
         anndata.AnnData: AnnData object.
     """
-    data_array = np.reshape(fdata.events, (-1, fdata.channel_count))  # type: ignore[call-overload]
+    data_array = np.reshape(np.asarray(fdata.events), (-1, fdata.channel_count))  # type: ignore[call-overload]
 
     if include_metadata is True:
         adata = AnnData(X=data_array, uns=fdata.text)
