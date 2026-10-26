@@ -1,4 +1,4 @@
-name: Build (Python 3.11)
+name: Build (Python 3.14)
 
 on:
     push:
@@ -19,7 +19,7 @@ jobs:
             uses: astral-sh/setup-uv@v7
             with:
                 enable-cache: true
-                python-version: "3.11"
+                python-version: "3.14"
 
         # Run build pipeline
         -   name: Build package

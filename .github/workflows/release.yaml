@@ -1,4 +1,4 @@
-name: Release (Python 3.11)
+name: Release (Python 3.14)
 
 on:
     release:
@@ -18,7 +18,7 @@ jobs:
                 uses: astral-sh/setup-uv@v7
                 with:
                     enable-cache: true
-                    python-version: "3.11"
+                    python-version: "3.14"
 
             # Install build dependencies
             -   name: Install dependencies

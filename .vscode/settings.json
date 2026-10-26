@@ -23,6 +23,7 @@
         "**/coverage": true,
         "**/**__pycache__**": true,
         "**/*.pyc": true,
+        "**/coverage_report": true,
     },
     "files.watcherExclude": {
         "**/node_modules": true,

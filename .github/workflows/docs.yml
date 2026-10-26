@@ -1,4 +1,4 @@
-name: Documentation (python 3.11)
+name: Documentation (python 3.14)
 
 # CAVE: this workflow published sphinx docs to github pages, which are public by default!
 
@@ -25,7 +25,7 @@ jobs:
             uses: astral-sh/setup-uv@v7
             with:
                 enable-cache: true
-                python-version: "3.11"
+                python-version: "3.14"
 
         # Install docs dependencies
         -   name: Install docs dependencies
