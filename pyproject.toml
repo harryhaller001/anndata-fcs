@@ -25,7 +25,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-dependencies = [ "anndata", "flowio" ]
+dependencies = [ "anndata", "flowio>=1.4,<2", "numpy", "pandas", "scipy" ]
 
 optional-dependencies.docs = [
     "ipython",
@@ -78,6 +78,12 @@ ini_options.log_cli = true
 ini_options.python_files = "test_*.py"
 ini_options.testpaths = [ "test" ]
 ini_options.xfail_strict = true
+ini_options.filterwarnings = [
+    # Unexpected information loss must fail tests. Expected loss is asserted with pytest.warns.
+    "error::anndata_fcs.FCSConversionWarning",
+    # anndata<=0.13.4 reads the 'future.infer_string' option deprecated in pandas 3.1 (anndata/compat/__init__.py)
+    "ignore:The 'future.infer_string' option is deprecated:pandas.errors.Pandas4Warning",
+]
 ini_options.addopts = [
     "--import-mode=importlib",           # allow using test files with same name
     "--cov=src/anndata_fcs",

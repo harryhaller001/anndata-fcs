@@ -6,9 +6,9 @@
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/anndata-fcs)
 
 
-Converting CITESeq data to FCS file format. `anndata-fcs` implements function to convert from `AnnData` object to
-`FlowData` objects, `DataFrame` objects and vice versa. For loading and generation of FCS files `anndata-fcs` uses
-the implementation of the `flowio` package.
+Converting between FCS files and `AnnData` objects without losing metadata. FCS keywords are mapped to `var` and
+`uns`, and `obs`, `var` and `uns` of `AnnData` objects are embedded in FCS files, so both directions round trip. For
+reading and writing FCS files, `anndata-fcs` uses the `flowio` package.
 
 ### Get started
 
@@ -20,28 +20,33 @@ You can install `anndata-fcs` with `pip`:
 ### Example
 
 ```python
-# Load anndata object
-adata = sc.read_10x_h5(
-    filename="5k_pbmc_protein_v3_nextgem_filtered_feature_bc_matrix.h5",
-    gex_only=False,
-)
+import scanpy as sc
 
-# Filter citeseq data
-adata_citeseq = adata[:, adata.var["feature_types"] == "Antibody Capture"]
+from anndata_fcs import read_fcs, write_fcs
 
-# Convert data to fcs format
-fcs_data = anndata_to_fcs(adata_citeseq)
+# Load CITE-seq data
+adata = sc.read_10x_h5("5k_pbmc_protein_v3_nextgem_filtered_feature_bc_matrix.h5", gex_only=False)
+adata_citeseq = adata[:, adata.var["feature_types"] == "Antibody Capture"].copy()
 
-# Save fcs file
-fcs_data.write_fcs("citeseq.fcs")
+# Write FCS file. obs, var and uns are embedded, a "barcode_rank" channel maps events to cells.
+write_fcs(adata_citeseq, "citeseq.fcs")
+
+# Read FCS file (also files from cytometers or gates exported from flow cytometry software)
+adata_restored = read_fcs("citeseq.fcs")
 ```
+
+Channel keywords (`$PnS`, `$PnR`, `$PnV`, ...) are stored as `var` columns (`pns`, `pnr`, `pnv`, ...) and all other
+keywords in `adata.uns["fcs"]["text"]`. See the [data model](https://harryhaller001.github.io/anndata-fcs/data_model.html)
+for details.
+
+> Use `anndata_fcs.write_fcs` to write files. `flowio.FlowData.write_fcs` only keeps a few keywords by default.
 
 
 ### Development
 
 Install development version of `anndata-fcs` with `git`:
 
-`git clone git+https://github.com/harryhaller001/citeseq_to_fcs.git`
+`git clone https://github.com/harryhaller001/anndata-fcs.git`
 
 
 To setup development environment create python virtual environment:
@@ -73,23 +78,17 @@ make format
 # Run unit testing with pytest
 make testing
 
-# Run type checks with mypy
+# Run type checks with ty
 make typing
 ```
 
 ### Dependencies
 
-Required dependencies:
-
-- `flowio` (Documentation: https://flowio.readthedocs.io/en/latest)
+- `flowio>=1.4` (Documentation: https://flowio.readthedocs.io/en/latest)
 - `anndata` (Documentation: https://anndata.readthedocs.io/en/latest)
-- `matplotlib` (Documentation: https://matplotlib.org/stable/)
-
-Optional dependencies:
-
-- For density plots, `scipy` is required.
+- `numpy`, `pandas`, `scipy`
 
 
 ### License
 
-Please refer to the [LICENSE](https://github.com/harryhaller001/citeseq_to_fcs/blob/main/LICENSE) file
+Please refer to the [LICENSE](https://github.com/harryhaller001/anndata-fcs/blob/main/LICENSE) file

@@ -48,7 +48,7 @@ Run checks with `make`::
     # Run unit testing with pytest
     make testing
 
-    # Run type checks with mypy
+    # Run type checks with ty
     make typing
 
 
@@ -57,5 +57,6 @@ Dependencies
 
 Required dependencies:
 
-- `flowio` (Documentation: https://flowio.readthedocs.io/en/latest)
+- `flowio>=1.4` (Documentation: https://flowio.readthedocs.io/en/latest)
 - `anndata` (Documentation: https://anndata.readthedocs.io/en/latest)
+- `numpy`, `pandas`, `scipy`
