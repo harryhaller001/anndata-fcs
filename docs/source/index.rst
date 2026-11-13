@@ -29,9 +29,9 @@ the implementation of the `flowio` package.
 Get started
 -----------
 
-You can install ``anndata-fcs`` with ``pip``::
+You can install ``anndata-fcs`` with ``uv``::
 
-    pip install anndata-fcs
+    uv add anndata-fcs
 
 
 For more details, see :ref:`install`.
@@ -40,7 +40,7 @@ For more details, see :ref:`install`.
 Contact
 -------
 
-If you found a bug, please use the `Issue tracker <https://github.com/harryhaller001/citeseq_to_fcs/issues>`_.
+If you found a bug, please use the `Issue tracker <https://github.com/harryhaller001/anndata-fcs/issues>`_.
 
 
 

@@ -1,9 +1,8 @@
 import flowio
 import numpy as np
-import pandas as pd
 from anndata import AnnData
 
-from anndata_fcs import anndata_to_fcs, fcs_to_anndata, fcs_to_dataframe
+from anndata_fcs import anndata_to_fcs, fcs_to_anndata
 
 
 def test_anndata_to_fcs(adata: AnnData) -> None:
@@ -20,10 +19,6 @@ def test_anndata_to_fcs(adata: AnnData) -> None:
     assert (
         np.reshape(fcs_data.events, (-1, fcs_data.channel_count))[:, : fcs_data.channel_count - 1] == adata.X.toarray()
     ).all()
-
-    fcs_df = fcs_to_dataframe(fdata=fcs_data)
-
-    assert isinstance(fcs_df, pd.DataFrame)
 
     adata_convert_no_uns = fcs_to_anndata(fdata=fcs_data, include_metadata=False)
 

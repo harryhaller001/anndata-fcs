@@ -11,9 +11,9 @@ Installation
 .. _setuptools: https://pypi.org/project/setuptools/
 
 
-For installation of this package you need to have Python 3.10 or newer installed. You can install ``anndata-fcs`` with ``pip``::
+For installation of this package you need to have Python 3.11 or newer installed. You can install ``anndata-fcs`` with ``uv``::
 
-    pip install anndata-fcs
+    uv add anndata-fcs
 
 
 Development
@@ -21,13 +21,12 @@ Development
 
 Install development version of `anndata-fcs` with::
 
-    git clone git+https://github.com/harryhaller001/citeseq_to_fcs.git
+    git clone git+https://github.com/harryhaller001/anndata-fcs.git
 
 
 To setup development environment create python virtual environment::
 
-    python3 -m virtualenv venv
-    source venv/bin/activate
+    uv venv
 
 
 Use `make` to setup dependencies::
@@ -60,8 +59,3 @@ Required dependencies:
 
 - `flowio` (Documentation: https://flowio.readthedocs.io/en/latest)
 - `anndata` (Documentation: https://anndata.readthedocs.io/en/latest)
-- `matplotlib` (Documentation: https://matplotlib.org/stable/)
-
-Optional dependencies:
-
-- For density plots, `scipy` is required.

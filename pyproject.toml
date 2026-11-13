@@ -4,8 +4,8 @@ requires = [ "uv-build>=0.9.28,<0.10" ]
 
 [project]
 name = "anndata-fcs"
-version = "0.2.1"
-description = "Converting FCS files to AnnData objects."
+version = "0.3.0"
+description = "Converting between FCS files and AnnData objects with consistent metadata."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 maintainers = [ { name = "harryhaller001", email = "harryhaller001@gmail.com" } ]
@@ -25,7 +25,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-dependencies = [ "anndata", "flowio", "matplotlib" ]
+dependencies = [ "anndata", "flowio" ]
 
 optional-dependencies.docs = [
     "ipython",
@@ -37,7 +37,6 @@ optional-dependencies.docs = [
 ]
 
 optional-dependencies.test = [
-    "flit",
     "ipykernel",
     "ipython",
     "ipywidgets",
@@ -52,22 +51,6 @@ optional-dependencies.test = [
 ]
 urls.Documentation = "https://harryhaller001.github.io/anndata-fcs/"
 urls.Source = "https://github.com/harryhaller001/anndata-fcs"
-
-[tool.flit.sdist]
-include = [ "src/anndata_fcs/", "test/" ]
-exclude = [
-    "docs",
-    "coverage",
-    ".vscode",
-    "data",
-    ".github",
-    ".git",
-    ".pre-commit-config.yaml",
-    ".python-version",
-    "requirements.txt",
-    "Makefile",
-    ".gitignore",
-]
 
 [tool.ruff]
 line-length = 120
