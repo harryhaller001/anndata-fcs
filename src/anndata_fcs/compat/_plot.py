@@ -1,3 +1,4 @@
+import warnings
 from collections.abc import Sequence
 
 import matplotlib.pyplot as plt
@@ -9,8 +10,8 @@ from matplotlib.axes import Axes
 from matplotlib.patches import Polygon
 from scipy import sparse
 
-from ._convert import fcs_to_dataframe
-from ._types import NumberType, ScaleOptions
+from anndata_fcs._types import NumberType, ScaleOptions
+from anndata_fcs.compat._convert import fcs_to_dataframe
 
 
 def scatter(
@@ -28,7 +29,7 @@ def scatter(
     ax: Axes | None = None,
     figsize: tuple[int, int] = (5, 5),
 ) -> Axes:
-    """Plot scatter from FCS data.
+    """[deprecated] Plot scatter from FCS data.
 
     Args:
         data (typing.Union[pandas.DataFrame, flowio.FlowData, anndata.AnnData]): Event data. Argument can be DataFrame, AnnData or FlowData instance.
@@ -54,6 +55,12 @@ def scatter(
         AssertionError: If length of `highlight` does not match with length of `data`.
         AssertionError: If x and y gate boundaries could not be calculated.
     """
+    warnings.warn(
+        message="This method is deprecated and will be remove in the next version of `anndata_fcs`.",
+        category=DeprecationWarning,
+        stacklevel=1,
+    )
+
     if ax is None:
         _, ax = plt.subplots(figsize=figsize)
 

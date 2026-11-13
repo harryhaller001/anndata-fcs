@@ -48,26 +48,6 @@ def anndata_to_fcs(adata: AnnData) -> flowio.FlowData:
     return fdata
 
 
-def fcs_to_dataframe(fdata: flowio.FlowData, legacy_flowio: bool = False) -> pd.DataFrame:
-    """Converts FlowData instance to pandas DataFrame.
-
-    Args:
-        fdata (flowio.FlowData): FlowData instance to convert.
-        legacy_flowio (bool, optional): Support for legacy `flowio<1.4.0`. Defaults to `false`.
-
-    Returns:
-        pandas.DataFrame: Pandas dataframe.
-    """
-    events_colname: str = "pnn"
-    if legacy_flowio is True:
-        events_colname = "PnN"
-
-    return pd.DataFrame(
-        np.reshape(np.asarray(fdata.events), (-1, fdata.channel_count)),  # type: ignore[call-overload]
-        columns=[v[events_colname] for v in fdata.channels.values()],
-    )
-
-
 def fcs_to_anndata(
     fdata: flowio.FlowData,
     include_metadata: bool = True,

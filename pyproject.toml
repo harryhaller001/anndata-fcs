@@ -4,7 +4,7 @@ requires = [ "uv-build>=0.9.28,<0.10" ]
 
 [project]
 name = "anndata-fcs"
-version = "0.2.0"
+version = "0.2.1"
 description = "Converting FCS files to AnnData objects."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
