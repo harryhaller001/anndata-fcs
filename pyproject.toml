@@ -81,8 +81,9 @@ ini_options.xfail_strict = true
 ini_options.filterwarnings = [
     # Unexpected information loss must fail tests. Expected loss is asserted with pytest.warns.
     "error::anndata_fcs.FCSConversionWarning",
-    # anndata<=0.13.4 reads the 'future.infer_string' option deprecated in pandas 3.1 (anndata/compat/__init__.py)
-    "ignore:The 'future.infer_string' option is deprecated:pandas.errors.Pandas4Warning",
+    # anndata<=0.13.4 reads the 'future.infer_string' option deprecated in pandas 3.1 (anndata/compat/__init__.py).
+    # Filter on the builtin base class: pandas.errors.Pandas4Warning does not exist in pandas<3 (Python 3.11).
+    "ignore:The 'future.infer_string' option is deprecated:DeprecationWarning",
 ]
 ini_options.addopts = [
     "--import-mode=importlib",           # allow using test files with same name
