@@ -4,9 +4,9 @@ name: Testing package
 on:
     workflow_dispatch:
     push:
-        branches: [main]
+        branches: [main, 'dev_*']
     pull_request:
-        branches: [main]
+        branches: [main, 'dev_*']
         types:  [opened, reopened, synchronize]
 
 
