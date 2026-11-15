@@ -1,4 +1,5 @@
 import io
+import re
 
 import flowio
 import numpy as np
@@ -22,20 +23,20 @@ def test_read_fcs_float(lsr_ii_fdata: flowio.FlowData) -> None:
     assert "preprocessed" not in adata.layers
 
     assert list(adata.var_names) == lsr_ii_fdata.pnn_labels
-    assert len(adata.var.columns) == 0
+    # Per-channel keywords are var columns. $PnN is var_names, $PnB describes the binary layout.
+    assert adata.var.loc["FSC-A", "$PnR"] == "262144"
+    assert adata.var.loc["FSC-A", "$PnV"] == "611"
+    assert adata.var.loc["FSC-A", "$PnDISPLAY"] == "LOG"
+    assert "$PnN" not in adata.var.columns and "$PnB" not in adata.var.columns
 
     meta = adata.uns["fcs"]
     assert meta["version"] == "3.0"
     assert meta["text"]["cyt"] == "LSRII"
     assert meta["text"]["spill"].startswith("4,FITC-A")
     assert meta["text"]["tube name"] == "D6"
-    # Per-channel keywords keep the names parsed by FlowIO
-    assert meta["text"]["p1n"] == "FSC-A"
-    assert meta["text"]["p1r"] == "262144"
-    assert meta["text"]["p1v"] == "611"
-    assert meta["text"]["p1display"] == "LOG"
+    # uns only holds global keywords
     assert not STRUCTURAL_KEYWORDS & set(meta["text"])
-    assert "p1b" not in meta["text"]
+    assert not any(re.fullmatch(r"p\d+\D.*", key) for key in meta["text"])
     assert "source" not in meta
     assert meta["filename"] == "HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs"
 
@@ -45,9 +46,13 @@ def test_read_fcs_int(int_fdata: flowio.FlowData) -> None:
 
     assert adata.X.dtype == np.uint16
     np.testing.assert_array_equal(adata.X, int_fdata.as_array(preprocess=False))
-    assert adata.uns["fcs"]["text"]["p2s"] == "CD4 FITC"
-    assert adata.uns["fcs"]["text"]["p3s"] == "CD8/PE"
-    assert adata.uns["fcs"]["text"]["p2e"] == "4,1"
+    # Channels without a keyword hold missing values
+    assert adata.var["$PnS"].dtype == "string"
+    assert adata.var["$PnS"].isna().tolist() == [True, False, False, True]
+    assert adata.var.loc["FL1-H", "$PnS"] == "CD4 FITC"
+    assert adata.var.loc["FL2-H", "$PnS"] == "CD8/PE"
+    assert adata.var.loc["FL1-H", "$PnE"] == "4,1"
+    assert adata.var.loc["Time", "$PnG"] == "0.01"
     assert adata.uns["fcs"]["analysis"] == {"gate1": "lymphocytes"}
     # Keywords containing '/' are escaped, so the object can be written to h5ad
     assert adata.uns["fcs"]["text"]["custom%2Fkey"] == "custom value"
@@ -132,7 +137,7 @@ def test_read_fcs_event_index_out_of_range(adata_annotated: AnnData) -> None:
     assert len(restored.obs.columns) == 0
 
 
-def test_to_flowdata(adata_annotated: AnnData) -> None:
+def test_write_fcs_layout(adata_annotated: AnnData) -> None:
     fdata = to_flowdata(adata_annotated)
 
     assert isinstance(fdata, flowio.FlowData)
@@ -168,15 +173,19 @@ def test_write_fcs_index_channel(adata: AnnData) -> None:
 
 
 def test_write_fcs_pns(adata: AnnData) -> None:
-    fdata = to_flowdata(adata, pns_key="gene_ids", index_channel=None)
+    """Marker labels ($PnS) are written from the $PnS column of var, missing values are not written."""
+    adata.var["$PnS"] = adata.var["gene_ids"]
+    fdata = to_flowdata(adata, index_channel=None)
     assert fdata.pns_labels == list(adata.var["gene_ids"])
 
-    adata.uns["fcs"] = {"text": {"p1n": adata.var_names[0], "p1s": "label"}}
+    adata.var["$PnS"] = ["label"] + [None] * (adata.n_vars - 1)
     fdata = to_flowdata(adata, index_channel=None)
     assert fdata.pns_labels == ["label"] + [""] * (adata.n_vars - 1)
 
-    with pytest.raises(KeyError):
-        to_flowdata(adata, pns_key="missing")
+    # Keyword columns are restored from the keywords, not from the AnnData payload
+    restored = read_fcs(fdata)
+    assert restored.var.loc[adata.var_names[0], "$PnS"] == "label"
+    assert restored.var["$PnS"].isna().sum() == adata.n_vars - 1
 
 
 def test_write_fcs_range() -> None:
@@ -216,7 +225,7 @@ def test_write_fcs_unsupported_metadata(adata: AnnData) -> None:
 def test_write_fcs_analysis(int_fdata: flowio.FlowData) -> None:
     adata = read_fcs(int_fdata)
     # Linear scale keeps the integer data exact in float32, so only the ANALYSIS segment is lost
-    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    adata.var.loc["FL1-H", "$PnE"] = "0,0"
 
     with pytest.warns(FCSConversionWarning, match="ANALYSIS"):
         to_flowdata(adata)
@@ -242,12 +251,12 @@ def test_write_fcs_unwritten_keywords() -> None:
 
 
 @pytest.mark.parametrize(
-    ("keyword", "value", "match"), [("p2e", "4", r"'FL1-H'.*Invalid \$PnE"), ("p2r", "max", r"'FL1-H'.*Invalid \$PnR")]
+    ("column", "value", "match"), [("$PnE", "4", r"'FL1-H'.*Invalid \$PnE"), ("$PnR", "max", r"'FL1-H'.*Invalid \$PnR")]
 )
-def test_write_fcs_invalid_channel_keywords(int_fdata: flowio.FlowData, keyword: str, value: str, match: str) -> None:
+def test_write_fcs_invalid_channel_keywords(int_fdata: flowio.FlowData, column: str, value: str, match: str) -> None:
     adata = read_fcs(int_fdata)
     del adata.uns["fcs"]["analysis"]
-    adata.uns["fcs"]["text"][keyword] = value
+    adata.var.loc["FL1-H", column] = value
     with pytest.raises(ValueError, match=match):
         to_flowdata(adata)
 
@@ -264,7 +273,7 @@ def test_write_fcs_store_obs(adata_annotated: AnnData) -> None:
 def test_write_fcs_originality(int_fdata: flowio.FlowData) -> None:
     """Written files are derived copies, which FCS 3.1 marks with $ORIGINALITY and $LAST_MODIFIED."""
     adata = read_fcs(int_fdata)
-    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    adata.var.loc["FL1-H", "$PnE"] = "0,0"
     del adata.uns["fcs"]["analysis"]
     adata.uns["fcs"]["text"]["originality"] = "Original"
     adata.uns["fcs"]["text"]["last_modified"] = "01-JAN-2000 00:00:00.00"
@@ -312,9 +321,9 @@ def test_write_fcs_comma_in_channel_name() -> None:
 
 
 def test_write_fcs_channel_keywords_follow_channels(int_fdata: flowio.FlowData) -> None:
-    """Per-channel keywords are assigned to the written channels by $PnN, so subsetting and reordering keeps them."""
+    """Per-channel keywords are var columns, so subsetting and reordering keeps them with their channel."""
     adata = read_fcs(int_fdata)
-    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    adata.var.loc["FL1-H", "$PnE"] = "0,0"
     del adata.uns["fcs"]["analysis"]
     subset = adata[:, ["FL2-H", "FL1-H"]].copy()
 
@@ -326,41 +335,51 @@ def test_write_fcs_channel_keywords_follow_channels(int_fdata: flowio.FlowData) 
     assert "p3n" not in fdata.text and "p4g" not in fdata.text
 
 
-def test_write_fcs_unassigned_channel_keyword() -> None:
-    """Per-channel keywords without a matching $PnN would be attributed to another channel and are not written."""
+def test_write_fcs_channel_keyword_in_text() -> None:
+    """$Pn keywords in uns would be attributed to a channel of the written file and are not written."""
     adata = AnnData(np.zeros((2, 2), dtype=np.float32))
     adata.var_names = ["A", "B"]
-    adata.uns["fcs"] = {"text": {"p1n": "A", "p1s": "CD3", "p2n": "C", "p2s": "CD4", "p3s": "orphan"}}
+    adata.uns["fcs"] = {"text": {"p2s": "CD4", "p3foo": "beyond PAR"}}
 
-    with pytest.warns(FCSConversionWarning) as record:
-        fdata = to_flowdata(adata)
-    messages = " ".join(str(warning.message) for warning in record)
-    assert "'p3s' refers to channel 3" in messages
-    # Channel C is replaced by B, so the keywords of C are not assigned to B
-    assert "without a matching $PnN keyword" in messages
-    assert fdata.pns_labels == ["CD3", "", ""]
-    assert "p3s" not in fdata.text
+    with pytest.warns(FCSConversionWarning, match=r"'p2s' in uns\['fcs'\]\['text'\] refers to channel 2.*'\$PnS'"):
+        fdata = to_flowdata(adata, index_channel=None)
+    assert "p2s" not in fdata.text
+    # Keywords of channels beyond $PAR are global keywords
+    assert fdata.text["p3foo"] == "beyond PAR"
+
+
+def test_write_fcs_structural_channel_columns() -> None:
+    adata = AnnData(np.zeros((2, 2), dtype=np.float32))
+    adata.var_names = ["A", "B"]
+    adata.var["$PnN"] = ["C", "D"]
+    with pytest.warns(FCSConversionWarning, match=r"'\$PnN' is not written"):
+        fdata = to_flowdata(adata, index_channel=None)
+    assert fdata.pnn_labels == ["A", "B"]
 
 
 def test_write_fcs_renamed_channels(int_fdata: flowio.FlowData) -> None:
-    """Renamed channels lose their per-channel keywords, which can mislabel log scaled event data."""
+    """Per-channel keywords are var columns, so renamed channels keep them."""
     adata = read_fcs(int_fdata)
     del adata.uns["fcs"]["analysis"]
     adata.var_names = ["FSC-A", "CD4", "FL2-H", "Time"]
 
-    with pytest.warns(FCSConversionWarning, match=r"var_names without a matching \$PnN keyword .*: CD4\."):
+    # The log scaled channel is still converted to linear scale (not exact in float32)
+    with pytest.warns(FCSConversionWarning, match="32-bit float"):
         fdata = to_flowdata(adata, index_channel=None)
-    assert fdata.pns_labels[1] == ""
+    assert fdata.pnn_labels[1] == "CD4"
+    assert fdata.pns_labels[1] == "CD4 FITC"
+    assert fdata.text["p2e"] == "0,0"
+    assert fdata.text["p2r"] == "10000"
 
 
 def test_write_fcs_added_channel(int_fdata: flowio.FlowData) -> None:
-    """Channels added to the AnnData object have no keywords to lose and do not trigger a warning."""
+    """Channels added to the AnnData object have missing keywords, which are not written."""
     adata = read_fcs(int_fdata)
-    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    adata.var.loc["FL1-H", "$PnE"] = "0,0"
     del adata.uns["fcs"]["analysis"]
     extended = AnnData(
         X=np.column_stack([adata.X, adata.X[:, 0]]),
-        var=pd.DataFrame(index=[*adata.var_names, "ratio"]),
+        var=pd.concat([adata.var, pd.DataFrame(index=["ratio"])]),
         uns=adata.uns,
     )
 
@@ -407,7 +426,7 @@ def test_write_fcs_subset_channels(lsr_ii_fdata: flowio.FlowData) -> None:
 def test_write_fcs_preprocessed_layer(int_fdata: flowio.FlowData) -> None:
     """The preprocessed layer is derived from X and the keywords, so it is not written and not reported."""
     adata = read_fcs(int_fdata, preprocess=True)
-    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    adata.var.loc["FL1-H", "$PnE"] = "0,0"
     del adata.uns["fcs"]["analysis"]
 
     fdata = to_flowdata(adata, index_channel=None)

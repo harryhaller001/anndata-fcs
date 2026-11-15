@@ -5,8 +5,9 @@ Layout produced by :func:`anndata_fcs.read_fcs`:
 * ``X``: event matrix (events x channels) as stored in the file.
 * ``layers["preprocessed"]``: optional, ``X`` with gain, log and time scaling applied. Not written to FCS files.
 * ``var.index``: channel names (``$PnN``).
-* ``uns["fcs"]``: keywords and file level metadata (see :class:`anndata_fcs._types.FCSMetadata`). Keywords keep the
-  names parsed by FlowIO (lower case, without ``$``), including per-channel keywords such as ``p1s`` or ``p1r``.
+* ``var`` columns ``$PnS``, ``$PnR``, ``$PnE``, ...: per-channel keywords (see :data:`CHANNEL_COLUMN_PREFIX`).
+* ``uns["fcs"]``: global keywords and file level metadata (see :class:`anndata_fcs._types.FCSMetadata`). Keywords keep
+  the names parsed by FlowIO (lower case, without ``$``).
 
 AnnData specific information (``obs``, ``obs_names``, extra ``var`` columns and ``uns``) is embedded into the FCS
 TEXT segment as JSON encoded keywords using the :data:`KEYWORD_PREFIX` namespace.
@@ -20,6 +21,10 @@ SCHEMA_VERSION: int = 1
 
 UNS_KEY: str = "fcs"
 """Key in ``adata.uns`` holding FCS file level metadata."""
+
+CHANNEL_COLUMN_PREFIX: str = "$Pn"
+"""Prefix of ``var`` columns holding per-channel keywords: ``$Pn`` followed by the upper case keyword suffix, e.g.
+``$PnS`` for ``$P1S``, ``$P2S``, ... or ``$PnDISPLAY`` for ``P1DISPLAY``, ``P2DISPLAY``, ..."""
 
 PREPROCESSED_LAYER: str = "preprocessed"
 """Layer holding the event data with gain, log and time scaling applied (``read_fcs(..., preprocess=True)``)."""

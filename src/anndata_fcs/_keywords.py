@@ -15,6 +15,7 @@ from anndata.utils import make_index_unique
 
 from anndata_fcs._exceptions import warn
 from anndata_fcs._schema import (
+    CHANNEL_COLUMN_PREFIX,
     CHANNEL_KEYWORD_PATTERN,
     FCS_DELIMITER,
     KEYWORD_PREFIX,
@@ -47,8 +48,11 @@ class SplitText:
     structural: dict[str, str] = field(default_factory=dict)
     """Keywords describing the binary layout (offsets, byte order, data type, ``$PnB``, ...)."""
 
+    channels: list[dict[str, str]] = field(default_factory=list)
+    """Per-channel keywords as suffix/value mappings in channel order, e.g. ``{"n": "FSC-A", "s": "CD3"}``."""
+
     text: dict[str, str] = field(default_factory=dict)
-    """All remaining keywords, including per-channel keywords (``p1n``, ``p1s``, ...)."""
+    """All remaining (global) keywords."""
 
     payload: dict[str, str] = field(default_factory=dict)
     """Keywords in the anndata-fcs namespace."""
@@ -74,24 +78,24 @@ def parse_channel_keyword(key: str, n_channels: int | None = None) -> tuple[int,
 
 
 def split_text(text: Mapping[str, str], n_channels: int) -> SplitText:
-    """Split parsed TEXT keywords into structural, payload and all other keywords.
-
-    Keyword names are kept as parsed by FlowIO.
+    """Split parsed TEXT keywords into structural, per-channel, payload and global keywords.
 
     Args:
         text: Keyword/value mapping as parsed by FlowIO (lower case keys without ``$``).
-        n_channels: Number of channels (``$PAR``). ``p<n>b`` is only treated as structural when
-            ``1 <= n <= n_channels``.
+        n_channels: Number of channels (``$PAR``). ``p<n>...`` keywords are only per-channel keywords when
+            ``1 <= n <= n_channels``, others are global keywords.
 
     Returns:
         SplitText: Classified keywords.
     """
-    result = SplitText()
+    result = SplitText(channels=[{} for _ in range(n_channels)])
 
     for key, value in text.items():
         channel = parse_channel_keyword(key, n_channels)
         if key in STRUCTURAL_KEYWORDS or (channel is not None and channel[1] in STRUCTURAL_CHANNEL_SUFFIXES):
             result.structural[key] = value.strip()
+        elif channel is not None:
+            result.channels[channel[0] - 1][channel[1]] = value
         elif key.startswith(KEYWORD_PREFIX):
             result.payload[key] = value
         else:
@@ -100,33 +104,25 @@ def split_text(text: Mapping[str, str], n_channels: int) -> SplitText:
     return result
 
 
-def remove_channel(keywords: Mapping[str, str], number: int, n_channels: int) -> dict[str, str]:
-    """Remove the per-channel keywords of channel ``number`` and renumber the keywords of the following channels.
+def channel_column(suffix: str) -> str:
+    """Name of the ``var`` column holding a per-channel keyword, e.g. ``$PnS`` for suffix ``s``.
 
-    Args:
-        keywords: Keywords in the FlowIO convention.
-        number: Channel number (1-based) to remove.
-        n_channels: Number of channels before removal.
-
-    Returns:
-        dict[str, str]: Keywords without the removed channel.
+    ``/`` and ``%`` are escaped, since h5ad files do not allow ``/`` in column names.
     """
-    result: dict[str, str] = {}
-    for key, value in keywords.items():
-        channel = parse_channel_keyword(key, n_channels)
-        if channel is None or channel[0] < number:
-            result[key] = value
-        elif channel[0] > number:
-            result[f"p{channel[0] - 1}{channel[1]}"] = value
-    return result
+    return CHANNEL_COLUMN_PREFIX + escape_key(suffix).upper()
+
+
+def column_suffix(column: str) -> str | None:
+    """Inverse of :func:`channel_column`: the keyword suffix, or ``None`` if ``column`` is no keyword column."""
+    suffix = column.removeprefix(CHANNEL_COLUMN_PREFIX)
+    # Suffixes start with a non-digit, as in the FlowIO keyword pattern (p<n><suffix>)
+    if suffix == column or suffix == "" or suffix[0].isdigit():
+        return None
+    return unescape_key(suffix).lower()
 
 
 def unique_channel_names(names: Sequence[str]) -> list[str]:
-    """Make channel names (``$PnN``) unique by appending ``-1``, ``-2``, ... to duplicates.
-
-    Used when reading (``var_names``) and when writing (to assign per-channel keywords to the de-duplicated names),
-    so both sides agree on the names.
-    """
+    """Make channel names (``$PnN``) unique by appending ``-1``, ``-2``, ... to duplicates."""
     index = pd.Index([str(name) for name in names], dtype=object)
     if index.is_unique:
         return list(index)
@@ -134,47 +130,6 @@ def unique_channel_names(names: Sequence[str]) -> list[str]:
         # anndata warns about suffix collisions, which make_index_unique resolves
         warnings.simplefilter("ignore", UserWarning)
         return [str(name) for name in make_index_unique(index)]
-
-
-def assign_channels(
-    keywords: Mapping[str, str],
-    channel_names: Sequence[str],
-) -> tuple[list[dict[str, str]], dict[str, str]]:
-    """Assign per-channel keywords to the channels of the written file by their name (``$PnN``).
-
-    Channels of ``keywords`` are identified by ``p<n>n``, every other ``p<n>...`` keyword is a global keyword. Matching by name keeps the keywords with their channel when
-    channels are removed or reordered. Duplicate names are made unique with :func:`unique_channel_names` (in channel
-    order), as done for ``var_names`` when reading, so each duplicate keeps its own keywords.
-
-    Args:
-        keywords: Keywords in the FlowIO convention, e.g. ``{"p1n": "FSC-A", "p1r": "262144", "cyt": "LSRII"}``.
-        channel_names: ``$PnN`` values of the written file, in channel order.
-
-    Returns:
-        tuple[list[dict[str, str]], dict[str, str]]: Per-channel keyword suffix/value mappings in the order of
-        ``channel_names`` (empty if no channel matches) and the remaining global keywords. Keywords of channels not
-        in ``channel_names`` are dropped.
-    """
-    by_number: dict[int, dict[str, str]] = {}
-    for key in keywords:
-        channel = parse_channel_keyword(key)
-        if channel is not None and channel[1] == "n":
-            by_number[channel[0]] = {}
-
-    global_keywords: dict[str, str] = {}
-    for key, value in keywords.items():
-        channel = parse_channel_keyword(key)
-        if channel is None or channel[0] not in by_number:
-            global_keywords[key] = value
-            continue
-        by_number[channel[0]][channel[1]] = value
-
-    ordered = sorted(by_number)
-    names = unique_channel_names([by_number[number]["n"] for number in ordered])
-    numbers = dict(zip(names, ordered, strict=True))
-
-    channels = [dict(by_number[numbers[name]]) if name in numbers else {} for name in channel_names]
-    return channels, global_keywords
 
 
 def normalize_keyword(key: str) -> str:
@@ -275,11 +230,10 @@ def build_metadata(
 
         channel = parse_channel_keyword(key, len(channels))
         if channel is not None:
-            # Global keywords only hold $Pn keywords not assigned to a channel. Written as is, they would be attributed
-            # to a different channel.
+            # Written as is, the keyword would be attributed to a channel of the written file
             messages.append(
-                f"Global keyword '{key}' refers to channel {channel[0]} of the written file, but is not assigned to a "
-                f"channel by a matching '$P<n>N' keyword. It is not written."
+                f"Keyword '{key}' in uns['fcs']['text'] refers to channel {channel[0]} of the written file. Per-channel "
+                f"keywords are stored in var columns (e.g. '{channel_column(channel[1])}'). It is not written."
             )
             continue
 

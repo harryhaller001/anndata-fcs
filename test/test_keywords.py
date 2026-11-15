@@ -4,16 +4,15 @@ import pytest
 
 from anndata_fcs import FCSConversionWarning
 from anndata_fcs._keywords import (
-    assign_channels,
     build_metadata,
+    channel_column,
     check_spillover,
+    column_suffix,
     escape_key,
     format_timestamp,
     parse_pne,
-    remove_channel,
     split_text,
     unescape_key,
-    unique_channel_names,
 )
 
 
@@ -43,46 +42,25 @@ def test_split_text() -> None:
 
     assert split.structural == {"begindata": "100", "tot": "5", "p1b": "32"}
     assert split.payload == {"anndata_fcs_schema": "1"}
-    assert split.text == {
-        "p1n": "FSC-A",
-        "p1s": "Forward",
-        "p10n": "CD4",
-        "p10display": "LOG",
-        "p99n": "out of range",
-        "plate name": "plate",
-        "cyt": "LSRII",
-        "p99b": "8",
-    }
+    assert len(split.channels) == 10
+    assert split.channels[0] == {"n": "FSC-A", "s": "Forward"}
+    assert split.channels[9] == {"n": "CD4", "display": "LOG"}
+    assert split.channels[1:9] == [{}] * 8
+    # $Pn keywords of channels beyond $PAR are global keywords
+    assert split.text == {"p99n": "out of range", "plate name": "plate", "cyt": "LSRII", "p99b": "8"}
 
 
-def test_remove_channel() -> None:
-    keywords = {"p1n": "A", "p2n": "B", "p2s": "x", "p3n": "C", "p3r": "1", "p9n": "out of range", "cyt": "LSRII"}
-    assert remove_channel(keywords, 2, n_channels=3) == {
-        "p1n": "A",
-        "p2n": "C",
-        "p2r": "1",
-        "p9n": "out of range",
-        "cyt": "LSRII",
-    }
+@pytest.mark.parametrize(
+    ("suffix", "column"), [("s", "$PnS"), ("display", "$PnDISPLAY"), ("foo/bar", "$PnFOO%2FBAR"), ("a%b", "$PnA%25B")]
+)
+def test_channel_column(suffix: str, column: str) -> None:
+    assert channel_column(suffix) == column
+    assert column_suffix(column) == suffix
 
 
-def test_assign_channels() -> None:
-    keywords = {"p1n": "A", "p1s": "CD3", "p2n": "B", "p2r": "1024", "p3n": "C", "p9s": "orphan", "cyt": "LSRII"}
-
-    channels, global_keywords = assign_channels(keywords, ["B", "A", "D"])
-    assert channels == [{"n": "B", "r": "1024"}, {"n": "A", "s": "CD3"}, {}]
-    # Keywords of channels without p<n>n are global keywords
-    assert global_keywords == {"p9s": "orphan", "cyt": "LSRII"}
-
-
-def test_assign_channels_duplicate_names() -> None:
-    """Duplicate $PnN are made unique like var_names when reading, so each duplicate keeps its keywords."""
-    keywords = {"p1n": "A", "p1s": "CD3", "p2n": "A", "p2s": "CD4", "p3n": "A-1", "p3s": "CD8"}
-    names = unique_channel_names(["A", "A", "A-1"])
-    assert len(set(names)) == 3 and names[0] == "A"
-
-    channels, _ = assign_channels(keywords, list(reversed(names)))
-    assert [channel["s"] for channel in channels] == ["CD8", "CD4", "CD3"]
+@pytest.mark.parametrize("column", ["gene_ids", "pns", "$Pn", "$Pn1", "$PS"])
+def test_column_suffix_not_keyword(column: str) -> None:
+    assert column_suffix(column) is None
 
 
 def test_build_metadata() -> None:
@@ -135,7 +113,7 @@ def test_build_metadata_channel_keyword_in_global_keywords() -> None:
     """$Pn keywords of channels beyond $PAR must not be attributed to channels of the written file."""
     metadata, _, messages = build_metadata([{"r": "1"}, {"r": "1"}], {"p2foo": "x", "p3foo": "y"})
     assert metadata == {"p1r": "1", "p2r": "1", "p3foo": "y"}
-    assert len(messages) == 1 and "'p2foo' refers to channel 2" in messages[0]
+    assert len(messages) == 1 and "'p2foo' in uns['fcs']['text'] refers to channel 2" in messages[0]
 
 
 def test_format_timestamp() -> None:

@@ -20,10 +20,12 @@ def read_fcs(
     ``X`` holds the event data as stored in the file. All metadata of the FCS file is kept:
 
     * Channel names (``$PnN``) become ``var_names``. Duplicate names are made unique by appending ``-1``, ``-2``, ...
-    * Keywords are stored in ``uns["fcs"]["text"]`` with the names parsed by FlowIO (lower case, without ``$``),
-      including per-channel keywords (e.g. ``p1n``, ``p1s``, ``p1r``). Values are stored as raw strings. Keywords
-      describing the binary layout (offsets, ``$DATATYPE``, ``$PnB``, ...) are not stored, since they are
-      regenerated when writing.
+    * Per-channel keywords are stored in ``var`` columns named after the keyword: ``$PnS`` holds ``$P1S``, ``$P2S``,
+      ..., ``$PnR`` holds ``$P1R``, ``$P2R``, ... and so on for every keyword of the file (e.g. ``$PnDISPLAY``).
+      Values are raw strings, missing for channels without the keyword.
+    * Global keywords are stored in ``uns["fcs"]["text"]`` with the names parsed by FlowIO (lower case, without
+      ``$``). Values are raw strings. Keywords describing the binary layout (offsets, ``$DATATYPE``, ``$PnB``, ...) are
+      not stored, since they are regenerated when writing.
     * The ANALYSIS segment and the FCS version are stored in ``uns["fcs"]``.
     * If the file was written by :func:`write_fcs`, ``obs``, ``obs_names``, additional ``var`` columns and ``uns``
       are restored and the synthetic event index channel is removed from the event data. If ``obs`` was not stored,
@@ -60,7 +62,6 @@ def write_fcs(
     adata: AnnData,
     file: str | os.PathLike[str] | IO[bytes],
     *,
-    pns_key: str | None = None,
     index_channel: str | None = DEFAULT_INDEX_CHANNEL,
     store_obs: bool = True,
 ) -> None:
@@ -70,11 +71,13 @@ def write_fcs(
 
     * ``X`` as event data (32-bit float, the only data type supported by FlowIO) with ``var_names`` as ``$PnN``.
       Channels stored on log scale (``$PnE``) are converted to linear scale.
-    * ``uns["fcs"]["text"]`` as keywords. Per-channel keywords (``p<n>s``, ``p<n>r``, ...) are assigned to the
-      written channels by their name (``p<n>n``), so they follow their channel if channels are removed or reordered.
-      ``$SPILLOVER`` and ``$SPILL`` are restricted to the written channels. ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time,
+    * ``var`` columns ``$PnS``, ``$PnR``, ... as per-channel keywords (as strings, missing values are not written).
+      They follow their channel if channels are removed, reordered or renamed. E.g. set marker labels with
+      ``adata.var["$PnS"] = adata.var["gene_ids"]``.
+    * ``uns["fcs"]["text"]`` as global keywords. ``$SPILLOVER`` and ``$SPILL`` are restricted to the written
+      channels. ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time,
       since the file is a derived copy of the data.
-    * ``obs`` (including ``obs_names``), ``var`` columns and JSON serialisable ``uns`` entries as JSON encoded
+    * ``obs`` (including ``obs_names``), other ``var`` columns and JSON serialisable ``uns`` entries as JSON encoded
       keywords in the ``ANNDATA_FCS_*`` namespace, which are restored by :func:`read_fcs`. Tuples in ``uns`` are
       restored as lists.
 
@@ -97,19 +100,16 @@ def write_fcs(
     Args:
         adata: AnnData object to write. It is not modified.
         file: Path or binary file handle.
-        pns_key: Column of ``var`` used for ``$PnS`` (marker/antigen labels). Defaults to ``None``, which keeps the
-            ``p<n>s`` keywords of ``uns["fcs"]["text"]``.
         index_channel: Name of a synthetic channel holding the position of each event in ``adata``. It allows mapping
             events of exported gates back to observations. Use ``None`` to omit it.
         store_obs: If ``True``, store ``obs`` and ``obs_names`` in the FCS file.
 
     Raises:
-        KeyError: If ``pns_key`` is not a column of ``var``.
         TypeError: If the event data is not numeric.
         ValueError: If channel names or keywords are invalid, or the metadata exceeds the size of the FCS TEXT
             segment.
     """
-    prepared = prepare_fcs(adata, pns_key=pns_key, index_channel=index_channel, store_obs=store_obs)
+    prepared = prepare_fcs(adata, index_channel=index_channel, store_obs=store_obs)
     if isinstance(file, str | os.PathLike):
         with open(file, "wb") as handle:
             prepared.write(handle)

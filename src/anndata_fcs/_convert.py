@@ -13,16 +13,15 @@ from anndata import AnnData
 
 from anndata_fcs._exceptions import warn
 from anndata_fcs._keywords import (
-    assign_channels,
     build_metadata,
+    channel_column,
     check_spillover,
+    column_suffix,
     escape_key,
     format_timestamp,
     linear_range,
     normalize_keyword,
-    parse_channel_keyword,
     parse_pne,
-    remove_channel,
     split_text,
     unescape_key,
     unique_channel_names,
@@ -81,19 +80,15 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool, owns_events: boo
 
     channel_names = [str(label) for label in fdata.pnn_labels]
     if len(set(channel_names)) < len(channel_names):
-        # Writing de-duplicates $PnN with the same function, so per-channel keywords stay with their channel
         warn("Channel names ($PnN) are not unique. Duplicates are made unique.")
         channel_names = unique_channel_names(channel_names)
-    var = pd.DataFrame(index=pd.Index(channel_names, dtype=object))
+    var = _channel_frame(split.channels, channel_names)
     obs: pd.DataFrame | None = None
     uns: dict[str, Any] = {}
-    text = split.text
 
     index_position: int | None = None
     if KW_SCHEMA in split.payload:
         index_position, var, obs, uns = _decode_payload(split.payload, events, var)
-        if index_position is not None:
-            text = remove_channel(text, index_position + 1, n_channels)
 
     # Every array is created at most once: removing the index channel copies the event data
     def without_index(matrix: np.ndarray, *, copy: bool) -> np.ndarray:
@@ -110,7 +105,7 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool, owns_events: boo
     uns_fcs: FCSMetadata = {
         "schema_version": SCHEMA_VERSION,
         "version": str(fdata.version),
-        "text": {escape_key(key): value for key, value in text.items()},
+        "text": {escape_key(key): value for key, value in split.text.items()},
         "analysis": {escape_key(key): value for key, value in dict(fdata.analysis or {}).items()},
     }
     if fdata.name is not None:
@@ -121,6 +116,21 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool, owns_events: boo
         obs = pd.DataFrame(index=_string_index(range(events.shape[0])))
 
     return AnnData(X=X, obs=obs, var=var, uns=uns, layers=layers)
+
+
+def _channel_frame(channels: list[dict[str, str]], channel_names: list[str]) -> pd.DataFrame:
+    """``var`` with one column per keyword suffix (``$PnS``, ``$PnR``, ...), missing for channels without it.
+
+    ``$PnN`` is not stored as a column, since it is ``var_names``. The nullable string dtype is used, since object
+    columns with missing values cannot always be written to h5ad files.
+    """
+    index = pd.Index(channel_names, dtype=object)
+    suffixes = list(dict.fromkeys(suffix for channel in channels for suffix in channel if suffix != "n"))
+    columns = {
+        channel_column(suffix): pd.Series([channel.get(suffix) for channel in channels], index=index, dtype="string")
+        for suffix in suffixes
+    }
+    return pd.DataFrame(columns, index=index)
 
 
 def _string_index(values: Iterable[int]) -> pd.Index:
@@ -247,7 +257,6 @@ class _PreparedFCS:
 def prepare_fcs(
     adata: AnnData,
     *,
-    pns_key: str | None,
     index_channel: str | None,
     store_obs: bool,
 ) -> _PreparedFCS:
@@ -260,21 +269,11 @@ def prepare_fcs(
     channel_names = [str(name) for name in adata.var_names]
     _check_channel_names(channel_names, adata.var_names.is_unique, index_channel)
 
-    if pns_key is not None and pns_key not in var.columns:
-        raise KeyError(f"Column '{pns_key}' not found in var.")
-
-    # Keywords, per-channel keywords are assigned to the written channels by $PnN
-    keywords = {
+    # Per-channel keywords are stored in var columns, so they follow their channel when var is subset or reordered
+    channels = _channel_keywords(var)
+    global_keywords = {
         normalize_keyword(unescape_key(str(key))): str(value) for key, value in dict(uns_fcs.get("text", {})).items()
     }
-    channels, global_keywords = assign_channels(keywords, channel_names)
-    _check_renamed_channels(keywords, channel_names, channels)
-    if pns_key is not None:
-        for position, channel in enumerate(channels):
-            value = var[pns_key].iloc[position]
-            channel.pop("s", None)
-            if not _is_missing(value):
-                channel["s"] = str(value)
 
     # Event data. Keywords are adjusted first, since they define the conversion to linear scale.
     log_scales = _log_scales(channels, channel_names)
@@ -324,7 +323,7 @@ def prepare_fcs(
         _encode_payload(
             adata,
             obs=obs,
-            var=var,
+            var=var[[column for column in var.columns if column_suffix(str(column)) is None]],
             index_channel=index_channel,
             store_obs=store_obs,
         )
@@ -357,6 +356,22 @@ def _is_missing(value: object) -> bool:
         return bool(pd.isna(value))  # ty: ignore[no-matching-overload]
     except (TypeError, ValueError):
         return False
+
+
+def _channel_keywords(var: pd.DataFrame) -> list[dict[str, str]]:
+    """Per-channel keywords (suffix/value mappings) of each channel from the ``$Pn...`` columns of ``var``."""
+    channels: list[dict[str, str]] = [{} for _ in range(len(var))]
+    for column in var.columns:
+        suffix = column_suffix(str(column))
+        if suffix is None:
+            continue
+        if suffix in ("n", "b"):
+            warn(f"var column '{column}' is not written: $PnN is taken from var_names and $PnB is set when writing.")
+            continue
+        for channel, value in zip(channels, var[column].tolist(), strict=True):
+            if not _is_missing(value):
+                channel[suffix] = str(value)
+    return channels
 
 
 def _check_channel_names(channel_names: list[str], is_unique: bool, index_channel: str | None) -> None:
@@ -409,35 +424,6 @@ def _check_unsupported_slots(adata: AnnData) -> None:
     ]
     if len(dropped) > 0:
         warn(f"{', '.join(dropped)} cannot be stored in FCS files and are dropped.")
-
-
-def _check_renamed_channels(
-    keywords: Mapping[str, str],
-    channel_names: list[str],
-    channels: list[dict[str, str]],
-) -> None:
-    """Report written channels that lost their per-channel keywords, because they were renamed.
-
-    Per-channel keywords are assigned by ``$PnN``. A channel whose name is not a ``$PnN`` value of ``keywords`` gets no
-    keywords. This is only reported if channels of ``keywords`` are missing from the written file as well, so channels
-    added to the AnnData object (which have no keywords to lose) do not trigger it. A renamed channel cannot be told
-    apart from a removed and an added channel, so the latter is reported as well.
-    """
-    source_names = set()
-    for key, value in keywords.items():
-        channel = parse_channel_keyword(key)
-        if channel is not None and channel[1] == "n":
-            source_names.add(value)
-
-    unmatched = [name for name, channel in zip(channel_names, channels, strict=True) if "n" not in channel]
-    missing = sorted(source_names - set(channel_names))
-    if len(unmatched) > 0 and len(missing) > 0:
-        warn(
-            f"var_names without a matching $PnN keyword in uns['fcs']['text']: {', '.join(unmatched)}. "
-            f"If they are renamed channels ({', '.join(missing)} are not written), their per-channel keywords "
-            "($PnS, $PnR, $PnE, $PnG, ...) are lost, and event data stored on log scale ($PnE) is written without "
-            "conversion to linear scale. Rename the channels after writing, or add $PnN keywords for them."
-        )
 
 
 def _row_blocks(X: Any) -> Iterator[np.ndarray]:

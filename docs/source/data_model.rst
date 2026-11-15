@@ -29,10 +29,13 @@ FCS to AnnData
        scaling applied. ``X`` and ``uns["fcs"]`` are not modified.
    * - ``var_names``
      - Channel names (``$PnN``).
+   * - ``var`` columns ``$PnS``, ``$PnR``, ``$PnE``, ...
+     - Per-channel keywords as strings, one column per keyword: ``$PnS`` holds ``$P1S``, ``$P2S``, ..., and
+       non-standard keywords get a column as well (e.g. ``$PnDISPLAY`` for ``P1DISPLAY``, ...). Channels without the
+       keyword hold missing values.
    * - ``uns["fcs"]["text"]``
-     - Keywords of the TEXT segment as raw strings, with the names parsed by FlowIO (lower case, without ``$``).
-       This includes global keywords, e.g. ``cyt``, ``date``, ``spill``, and per-channel keywords, e.g. ``p1n``,
-       ``p1s``, ``p1r``, ``p1display``.
+     - Global keywords of the TEXT segment as raw strings, with the names parsed by FlowIO (lower case, without
+       ``$``), e.g. ``cyt``, ``date``, ``spill``.
    * - ``uns["fcs"]["analysis"]``
      - Keywords of the ANALYSIS segment.
    * - ``uns["fcs"]["version"]``, ``["filename"]``, ``["schema_version"]``
@@ -41,16 +44,11 @@ FCS to AnnData
 Keywords describing the binary layout (``$BEGINDATA``, ``$DATATYPE``, ``$BYTEORD``, ``$PnB``, ...) are not stored,
 since they are regenerated when writing.
 
-``var`` has no columns for FCS files not written by ``anndata-fcs``. Use the per-channel keywords in
-``uns["fcs"]["text"]`` to add columns, e.g. marker labels (``$PnS``):
-
-.. code-block:: python
-
-    text = adata.uns["fcs"]["text"]
-    adata.var["marker"] = [text.get(f"p{n}s") for n in range(1, adata.n_vars + 1)]
+Since per-channel keywords are ``var`` columns, they stay with their channel when channels are subset, reordered or
+renamed, e.g. marker labels are ``adata.var["$PnS"]``.
 
 Keywords containing ``/`` are stored with ``/`` escaped as ``%2F`` (and ``%`` as ``%25``), because h5ad files do not
-allow ``/`` in keys.
+allow ``/`` in keys or column names.
 
 
 AnnData to FCS
@@ -69,15 +67,16 @@ AnnData to FCS
        linear scale.
    * - ``var_names``
      - ``$PnN``.
+   * - ``var`` columns ``$PnS``, ``$PnR``, ``$PnE``, ...
+     - Per-channel keywords. Values are written as strings, missing values are not written. Set marker labels with
+       e.g. ``adata.var["$PnS"] = adata.var["gene_ids"]``. ``$PnR`` defaults to the maximum of 262144 and the channel
+       maximum.
    * - ``uns["fcs"]["text"]``
-     - Keywords. Per-channel keywords (``p<n>s``, ``p<n>r``, ...) are assigned to the written channels by their
-       name (``p<n>n``), so they follow their channel if channels are removed or reordered. Per-channel keywords that
-       cannot be assigned are not written. Use ``pns_key`` to take marker labels (``$PnS``) from a ``var`` column.
-       ``$PnR`` defaults to the maximum of 262144 and the channel maximum. ``$SPILLOVER`` is restricted to channels present in ``var_names``, since it refers to
+     - Global keywords. ``$SPILLOVER`` is restricted to channels present in ``var_names``, since it refers to
        channels by ``$PnN``. ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time.
    * - ``obs``, ``obs_names``
      - JSON encoded in the ``ANNDATA_FCS_OBS`` keyword (``store_obs=True``).
-   * - ``var`` columns
+   * - Other ``var`` columns
      - JSON encoded in the ``ANNDATA_FCS_VAR`` keyword.
    * - Other ``uns`` entries
      - JSON encoded in the ``ANNDATA_FCS_UNS`` keyword. Supported: numbers, strings, booleans, ``None``, lists,
