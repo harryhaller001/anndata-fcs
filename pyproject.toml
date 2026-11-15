@@ -74,7 +74,6 @@ ini_options.minversion = "7.0"
 ini_options.log_format = "%(asctime)s %(levelname)s %(message)s"
 ini_options.log_date_format = "%Y-%m-%d %H:%M:%S"
 ini_options.log_level = "INFO"
-ini_options.log_cli = true
 ini_options.python_files = "test_*.py"
 ini_options.testpaths = [ "test" ]
 ini_options.xfail_strict = true
