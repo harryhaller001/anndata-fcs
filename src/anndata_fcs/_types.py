@@ -26,3 +26,22 @@ class FCSMetadata(TypedDict):
 
     filename: NotRequired[str]
     """Name of the source file, if known."""
+
+
+class FCSWriteOptions(TypedDict, total=False):
+    """Options of :func:`anndata_fcs.anndata_to_fcs`, also accepted by :func:`anndata_fcs.write_fcs`."""
+
+    pns_key: str | None
+    """Column of ``var`` (``raw.var``) used for ``$PnS``."""
+
+    index_channel: str | None
+    """Name of the synthetic event index channel, ``None`` to omit it."""
+
+    store_obs: bool
+    """Whether ``obs`` and ``obs_names`` are stored."""
+
+    strict: bool
+    """Raise an error instead of warning when information would be lost."""
+
+    use_raw: bool | None
+    """Write ``raw`` (``True``) or ``X`` (``False``)."""

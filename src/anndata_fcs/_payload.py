@@ -22,15 +22,11 @@ def dumps(obj: Any) -> str:
     """Serialise to JSON that survives the FCS TEXT segment as parsed by FlowIO.
 
     FlowIO removes every ``$`` from the TEXT segment and cannot parse values starting or ending with the delimiter
-    ``/``. Both characters only occur inside JSON strings and are replaced by JSON escape sequences.
+    ``/``. Both characters only occur inside JSON strings and are replaced by JSON escape sequences, so the result is
+    decoded by :func:`json.loads`.
     """
     text = json.dumps(obj, ensure_ascii=True, allow_nan=True, separators=(",", ":"))
     return text.replace("/", "\\/").replace("$", "\\u0024")
-
-
-def loads(text: str) -> Any:
-    """Inverse of :func:`dumps`."""
-    return json.loads(text)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -39,11 +35,14 @@ def loads(text: str) -> Any:
 
 
 def _nullable_values(series: pd.Series) -> list[Any]:
-    return [None if pd.isna(value) else _python_scalar(value) for value in series.astype(object)]
-
-
-def _python_scalar(value: Any) -> Any:
-    return value.item() if isinstance(value, np.generic) else value
+    """Values as Python scalars, with ``None`` for missing values."""
+    # Series.tolist returns Python scalars. The mask is computed at once instead of calling pd.isna per value.
+    missing = series.isna().to_numpy()
+    values = series.tolist()
+    if missing.any():
+        for position in np.flatnonzero(missing):
+            values[position] = None
+    return values
 
 
 def encode_series(series: pd.Series) -> dict[str, Any]:
@@ -74,11 +73,11 @@ def encode_series(series: pd.Series) -> dict[str, Any]:
         return {"kind": "extension", "dtype": str(dtype), "values": _nullable_values(series)}
 
     if pd.api.types.is_string_dtype(dtype) or pd.api.types.is_object_dtype(dtype):
-        values = _nullable_values(series)
-        if not all(value is None or isinstance(value, str) for value in values):
+        is_object = pd.api.types.is_object_dtype(dtype)
+        # String dtypes only hold strings. Object columns are checked in C instead of per value in Python.
+        if is_object and pd.api.types.infer_dtype(series, skipna=True) not in ("string", "empty"):
             raise UnsupportedValueError("Column contains values which are neither strings nor missing.")
-        kind = "object" if pd.api.types.is_object_dtype(dtype) else "extension"
-        return {"kind": kind, "dtype": str(dtype), "values": values}
+        return {"kind": "object" if is_object else "extension", "dtype": str(dtype), "values": _nullable_values(series)}
 
     raise UnsupportedValueError(f"Unsupported dtype '{dtype}'.")
 
@@ -141,7 +140,8 @@ def to_jsonable(obj: Any) -> Any:
     """Convert nested ``uns`` values to JSON compatible objects.
 
     Supported: ``None``, ``bool``, ``int``, ``float``, ``str``, NumPy scalars and arrays (numeric, boolean or string),
-    and dictionaries with string keys and lists/tuples of supported values.
+    and dictionaries with string keys and lists/tuples of supported values. Tuples are encoded as JSON arrays, so they
+    are restored as lists.
 
     Raises:
         UnsupportedValueError: If a value is not supported.

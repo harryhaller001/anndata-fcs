@@ -5,8 +5,9 @@ import numpy as np
 import pandas as pd
 import pytest
 from anndata import AnnData
+from scipy import sparse
 
-from anndata_fcs import FCSConversionWarning, anndata_to_fcs, fcs_to_anndata, write_fcs
+from anndata_fcs import FCSConversionWarning, _convert, anndata_to_fcs, fcs_to_anndata, write_fcs
 from anndata_fcs._schema import KW_OBS, KW_SCHEMA, STRUCTURAL_KEYWORDS
 
 
@@ -87,6 +88,58 @@ def test_fcs_to_anndata_duplicate_channels() -> None:
     with pytest.warns(FCSConversionWarning, match="not unique"):
         adata = fcs_to_anndata(flowio.FlowData(handle))
     assert adata.var_names.is_unique
+
+
+def test_duplicate_channels_keep_keywords() -> None:
+    """Duplicate $PnN are made unique on read and each duplicate keeps its per-channel keywords on write."""
+    handle = io.BytesIO()
+    flowio.create_fcs(handle, np.zeros(6, dtype=np.float32), ["A", "A", "B"], opt_channel_names=["CD3", "CD4", "CD8"])
+    handle.seek(0)
+    with pytest.warns(FCSConversionWarning, match="not unique"):
+        adata = fcs_to_anndata(flowio.FlowData(handle))
+    assert list(adata.var_names) == ["A", "A-1", "B"]
+
+    fdata = anndata_to_fcs(adata, index_channel=None, strict=True)
+    assert fdata.pnn_labels == ["A", "A-1", "B"]
+    assert fdata.pns_labels == ["CD3", "CD4", "CD8"]
+
+    reordered = adata[:, ["B", "A-1"]].copy()
+    reordered.raw = None
+    assert anndata_to_fcs(reordered, index_channel=None).pns_labels == ["CD8", "CD4"]
+
+
+def _with_index_values(fdata: flowio.FlowData, values: np.ndarray) -> flowio.FlowData:
+    """Copy of an FCS file written by anndata_to_fcs with modified values of the event index channel."""
+    events = fdata.as_array(preprocess=False)[: len(values)]
+    events[:, fdata.pnn_labels.index("barcode_rank")] = values
+    metadata = {key: value for key, value in fdata.text.items() if key not in STRUCTURAL_KEYWORDS}
+    handle = io.BytesIO()
+    flowio.create_fcs(handle, events.ravel(), fdata.pnn_labels, metadata_dict=metadata)
+    handle.seek(0)
+    return flowio.FlowData(handle)
+
+
+@pytest.mark.parametrize("values", [[0.5, 1.0, 2.0], [-1.0, 0.0, 1.0], [np.nan, 0.0, 1.0]])
+def test_fcs_to_anndata_invalid_event_index(adata_annotated: AnnData, values: list[float]) -> None:
+    """A modified index channel is not used, since truncating it would map events to wrong observations."""
+    fdata = _with_index_values(anndata_to_fcs(adata_annotated), np.array(values))
+    with pytest.warns(FCSConversionWarning) as record:
+        restored = fcs_to_anndata(fdata)
+    messages = " ".join(str(warning.message) for warning in record)
+    assert "does not hold valid event positions" in messages
+    assert "Observation metadata is not restored" in messages
+    assert "barcode_rank" not in restored.var_names
+    assert len(restored.obs.columns) == 0
+
+
+def test_fcs_to_anndata_event_index_out_of_range(adata_annotated: AnnData) -> None:
+    fdata = _with_index_values(anndata_to_fcs(adata_annotated), np.array([0.0, 1.0, 5000.0]))
+    with pytest.warns(FCSConversionWarning) as record:
+        restored = fcs_to_anndata(fdata)
+    messages = " ".join(str(warning.message) for warning in record)
+    assert "refers to more observations than stored (1000)" in messages
+    assert "Observation metadata is not restored" in messages
+    assert len(restored.obs.columns) == 0
 
 
 def test_anndata_to_fcs(adata_annotated: AnnData) -> None:
@@ -195,6 +248,30 @@ def test_anndata_to_fcs_invalid_input() -> None:
         anndata_to_fcs(adata)
 
 
+def test_anndata_to_fcs_strict_keywords() -> None:
+    """Keywords that are not written are reported by strict=True like any other information loss."""
+    adata = AnnData(np.zeros((2, 1), dtype=np.float32))
+    adata.var_names = ["A"]
+    adata.uns["fcs"] = {"text": {"com": ""}}
+    with pytest.warns(FCSConversionWarning, match="empty value"):
+        anndata_to_fcs(adata)
+    with pytest.raises(ValueError, match="empty value"):
+        anndata_to_fcs(adata, strict=True)
+
+
+@pytest.mark.parametrize(
+    ("keyword", "value", "match"), [("p2e", "4", r"'FL1-H'.*Invalid \$PnE"), ("p2r", "max", r"'FL1-H'.*Invalid \$PnR")]
+)
+def test_anndata_to_fcs_invalid_channel_keywords(
+    int_fdata: flowio.FlowData, keyword: str, value: str, match: str
+) -> None:
+    adata = fcs_to_anndata(int_fdata)
+    del adata.uns["fcs"]["analysis"]
+    adata.uns["fcs"]["text"][keyword] = value
+    with pytest.raises(ValueError, match=match):
+        anndata_to_fcs(adata)
+
+
 def test_anndata_to_fcs_store_obs(adata_annotated: AnnData) -> None:
     fdata = anndata_to_fcs(adata_annotated, store_obs=False)
     assert KW_OBS not in fdata.text
@@ -238,6 +315,20 @@ def test_anndata_to_fcs_spillover(lsr_ii_fdata: flowio.FlowData) -> None:
         anndata_to_fcs(subset, strict=True)
 
 
+def test_anndata_to_fcs_spill(lsr_ii_fdata: flowio.FlowData) -> None:
+    """$SPILL (FCS 3.0, BD FACSDiva) is restricted to the written channels like $SPILLOVER."""
+    adata = fcs_to_anndata(lsr_ii_fdata)
+    assert adata.uns["fcs"]["text"]["spill"].startswith("4,FITC-A,PerCP-Cy5-5-A,AmCyan-A,PE-TxRed YG-A,1,0,")
+
+    subset = adata[:, ["FSC-A", "SSC-A", "FITC-A"]].copy()
+    subset.raw = None
+    with pytest.warns(FCSConversionWarning, match=r"\$SPILL refers to channels not present in var_names \(PerCP"):
+        fdata = anndata_to_fcs(subset, index_channel=None)
+    assert fdata.text["spill"] == "1,FITC-A,1"
+    with pytest.raises(ValueError, match=r"\$SPILL refers"):
+        anndata_to_fcs(subset, strict=True)
+
+
 def test_anndata_to_fcs_comma_in_channel_name() -> None:
     adata = AnnData(np.zeros((2, 2), dtype=np.float32))
     adata.var_names = ["CD3,CD4", "B"]
@@ -270,10 +361,70 @@ def test_anndata_to_fcs_unassigned_channel_keyword() -> None:
     adata.var_names = ["A", "B"]
     adata.uns["fcs"] = {"text": {"p1n": "A", "p1s": "CD3", "p2n": "C", "p2s": "CD4", "p3s": "orphan"}}
 
-    with pytest.warns(FCSConversionWarning, match="'p3s' refers to channel 3"):
+    with pytest.warns(FCSConversionWarning) as record:
         fdata = anndata_to_fcs(adata)
+    messages = " ".join(str(warning.message) for warning in record)
+    assert "'p3s' refers to channel 3" in messages
+    # Channel C is replaced by B, so the keywords of C are not assigned to B
+    assert "without a matching $PnN keyword" in messages
     assert fdata.pns_labels == ["CD3", "", ""]
     assert "p3s" not in fdata.text
+
+
+def test_anndata_to_fcs_renamed_channels(int_fdata: flowio.FlowData) -> None:
+    """Renamed channels lose their per-channel keywords, which can mislabel log scaled event data."""
+    adata = fcs_to_anndata(int_fdata)
+    del adata.uns["fcs"]["analysis"]
+    adata.raw = None
+    adata.var_names = ["FSC-A", "CD4", "FL2-H", "Time"]
+
+    with pytest.warns(FCSConversionWarning, match=r"var_names without a matching \$PnN keyword .*: CD4\."):
+        fdata = anndata_to_fcs(adata, index_channel=None)
+    assert fdata.pns_labels[1] == ""
+    with pytest.raises(ValueError, match="CD4"):
+        anndata_to_fcs(adata, strict=True)
+
+
+def test_anndata_to_fcs_added_channel(int_fdata: flowio.FlowData) -> None:
+    """Channels added to the AnnData object have no keywords to lose and do not trigger a warning."""
+    adata = fcs_to_anndata(int_fdata)
+    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    del adata.uns["fcs"]["analysis"]
+    adata.raw = None
+    extended = AnnData(
+        X=np.column_stack([adata.X, adata.X[:, 0]]),
+        var=pd.DataFrame(index=[*adata.var_names, "ratio"]),
+        uns=adata.uns,
+    )
+
+    fdata = anndata_to_fcs(extended, index_channel=None, strict=True)
+    assert fdata.pnn_labels == ["FSC-A", "FL1-H", "FL2-H", "Time", "ratio"]
+    assert fdata.pns_labels[1] == "CD4 FITC"
+
+
+def test_anndata_to_fcs_unwritten_var_columns(lsr_ii_fdata: flowio.FlowData) -> None:
+    """var columns of the slot that is not written are reported."""
+    adata = fcs_to_anndata(lsr_ii_fdata)
+    adata.var["highly_variable"] = True
+    with pytest.warns(FCSConversionWarning, match="var columns are not written, .*: highly_variable"):
+        anndata_to_fcs(adata)
+    with pytest.raises(ValueError, match="highly_variable"):
+        anndata_to_fcs(adata, strict=True)
+    # Written from X, var is stored
+    restored = fcs_to_anndata(anndata_to_fcs(adata, use_raw=False, strict=True))
+    assert list(restored.var["highly_variable"]) == [True] * adata.n_vars
+
+    adata = fcs_to_anndata(lsr_ii_fdata)
+    adata.raw.var["detector"] = "PMT"
+    with pytest.warns(FCSConversionWarning, match="raw.var columns are not written, .*: detector"):
+        anndata_to_fcs(adata, use_raw=False)
+
+    # Identical columns in var and raw.var are stored once without a warning
+    adata = fcs_to_anndata(lsr_ii_fdata)
+    adata.var["detector"] = "PMT"
+    adata.raw = adata.copy()
+    for use_raw in (True, False):
+        anndata_to_fcs(adata, use_raw=use_raw, strict=True)
 
 
 def test_anndata_to_fcs_var_columns(adata: AnnData) -> None:
@@ -297,8 +448,11 @@ def test_anndata_to_fcs_use_raw(lsr_ii_fdata: flowio.FlowData) -> None:
     assert fdata.pnn_labels == lsr_ii_fdata.pnn_labels
     np.testing.assert_array_equal(fdata.as_array(preprocess=False), lsr_ii_fdata.as_array(preprocess=False))
 
-    with pytest.warns(FCSConversionWarning, match="raw differs from X"):
+    with pytest.warns(FCSConversionWarning) as record:
         fdata = anndata_to_fcs(subset, index_channel=None, use_raw=False)
+    messages = " ".join(str(warning.message) for warning in record)
+    # $SPILL only refers to fluorescence channels, which are not written
+    assert "raw differs from X" in messages and "$SPILL refers to channels" in messages
     assert fdata.pnn_labels == ["FSC-A", "SSC-A"]
     np.testing.assert_array_equal(fdata.as_array(preprocess=False), subset.X)
 
@@ -306,7 +460,9 @@ def test_anndata_to_fcs_use_raw(lsr_ii_fdata: flowio.FlowData) -> None:
         anndata_to_fcs(subset, use_raw=False, strict=True)
 
     subset.raw = None
-    np.testing.assert_array_equal(anndata_to_fcs(subset, index_channel=None).as_array(preprocess=False), subset.X)
+    with pytest.warns(FCSConversionWarning, match=r"\$SPILL refers to channels"):
+        fdata = anndata_to_fcs(subset, index_channel=None)
+    np.testing.assert_array_equal(fdata.as_array(preprocess=False), subset.X)
     with pytest.raises(ValueError, match="no raw"):
         anndata_to_fcs(subset, use_raw=True)
 
@@ -338,7 +494,132 @@ def test_anndata_to_fcs_preprocessed_x(int_fdata: flowio.FlowData) -> None:
     assert fdata.text["p2r"] == "10000"
     assert fdata.text["p1r"] == "1024"
     assert fdata.text["p3g"] == "1.0"
+    # Gain 2.0 halves the values, $TIMESTEP/0.01/ scales the time channel (its gain is ignored, like in FlowIO)
+    assert fdata.text["p3r"] == "512"
+    assert fdata.text["p4r"] == "11"
+    assert fdata.as_array(preprocess=False)[:, 2].max() <= 512
+    assert fdata.as_array(preprocess=False)[:, 3].max() <= 11
     assert fdata.text["timestep"] == "1"
     # The source object is not modified
     assert adata.uns["fcs"]["text"]["p2e"] == "4,1"
     assert adata.uns["fcs"]["text"]["timestep"] == "0.01"
+
+
+@pytest.mark.parametrize("chunk_rows", [7, 65_536])
+@pytest.mark.parametrize("layout", ["dense", "csr", "csc"])
+def test_anndata_to_fcs_event_blocks(
+    int_fdata: flowio.FlowData, monkeypatch: pytest.MonkeyPatch, chunk_rows: int, layout: str
+) -> None:
+    """Events are converted block-wise: results do not depend on the block size or the matrix layout."""
+    monkeypatch.setattr(_convert, "_CHUNK_ROWS", chunk_rows)
+    adata = fcs_to_anndata(int_fdata)
+    del adata.uns["fcs"]["analysis"]
+    expected = int_fdata.as_array(preprocess=True)
+    if layout != "dense":
+        adata.raw = None
+        adata.X = getattr(sparse, f"{layout}_matrix")(adata.X)
+
+    with pytest.warns(FCSConversionWarning, match="32-bit float"):
+        fdata = anndata_to_fcs(adata, index_channel=None)
+    # The log scaled channel FL1-H is converted to linear scale
+    np.testing.assert_allclose(fdata.as_array(preprocess=True), expected, rtol=1e-6)
+
+
+def test_anndata_to_fcs_precision_by_dtype() -> None:
+    """Only dtypes which are not exactly representable as float32 are checked and reported."""
+    for dtype in (np.int16, np.uint16, np.float16, np.float32, np.bool_):
+        anndata_to_fcs(AnnData(np.ones((3, 2), dtype=dtype)), strict=True)
+    anndata_to_fcs(AnnData(np.full((3, 2), 2**24, dtype=np.int64)), strict=True)
+    with pytest.raises(ValueError, match="32-bit float"):
+        anndata_to_fcs(AnnData(np.full((3, 2), 2**24 + 1, dtype=np.int64)), strict=True)
+    with pytest.raises(ValueError, match="32-bit float"):
+        anndata_to_fcs(AnnData(np.array([[np.nan, 0.1]], dtype=np.float64)), strict=True)
+    # NaN and inf are exactly representable
+    anndata_to_fcs(AnnData(np.array([[np.nan, np.inf]], dtype=np.float64)), strict=True)
+
+
+def test_anndata_to_fcs_same_events_sparse(int_fdata: flowio.FlowData) -> None:
+    """X and raw are compared block-wise, also if one of them is sparse."""
+    adata = fcs_to_anndata(int_fdata)
+    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    del adata.uns["fcs"]["analysis"]
+    adata.X = sparse.csr_matrix(adata.X)
+    anndata_to_fcs(adata, strict=True)
+
+    adata.X[0, 0] += 1
+    with pytest.raises(ValueError, match="X differs from raw"):
+        anndata_to_fcs(adata, strict=True)
+
+
+def test_fcs_to_anndata_without_raw(int_fdata: flowio.FlowData) -> None:
+    adata = fcs_to_anndata(int_fdata, raw=False)
+    assert adata.raw is None
+    np.testing.assert_array_equal(adata.X, int_fdata.as_array(preprocess=False))
+
+    preprocessed = fcs_to_anndata(int_fdata, preprocess=True, raw=False)
+    assert preprocessed.raw is None
+    del preprocessed.uns["fcs"]["analysis"]
+    # X is written, with keywords describing the preprocessed values
+    with pytest.warns(FCSConversionWarning, match="32-bit float"):
+        fdata = anndata_to_fcs(preprocessed, index_channel=None)
+    np.testing.assert_allclose(fdata.as_array(preprocess=True), preprocessed.X, rtol=1e-6)
+
+
+def test_fcs_to_anndata_does_not_share_memory(lsr_ii_fdata: flowio.FlowData) -> None:
+    before = np.array(lsr_ii_fdata.events)
+    adata = fcs_to_anndata(lsr_ii_fdata)
+    adata.X[:] = -1
+    adata.raw.X[:] = -1
+    np.testing.assert_array_equal(np.array(lsr_ii_fdata.events), before)
+
+
+@pytest.mark.parametrize("name", ["/A", "A/"])
+def test_anndata_to_fcs_delimiter_in_channel_name(name: str) -> None:
+    adata = AnnData(np.zeros((2, 2), dtype=np.float32))
+    adata.var_names = [name, "B"]
+    with pytest.raises(ValueError, match="must not start or end with '/'"):
+        anndata_to_fcs(adata)
+    with pytest.raises(ValueError, match="must not start or end with '/'"):
+        anndata_to_fcs(AnnData(np.zeros((2, 1), dtype=np.float32)), index_channel=name)
+
+
+def test_anndata_to_fcs_dollar_in_channel_name() -> None:
+    adata = AnnData(np.zeros((2, 2), dtype=np.float32))
+    adata.var_names = ["CD3$", "B"]
+    with pytest.warns(FCSConversionWarning, match=r"contain '\$'.*CD3\$"):
+        anndata_to_fcs(adata, index_channel=None)
+
+
+def test_anndata_to_fcs_text_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The size of the whole TEXT segment is checked, not only of the AnnData payload."""
+    adata = AnnData(np.zeros((2, 1), dtype=np.float32))
+    adata.uns["fcs"] = {"text": {"com": "x" * 5000}}
+    size = len(anndata_to_fcs(adata).text["com"])
+    assert size == 5000
+
+    monkeypatch.setattr(_convert, "TEXT_SIZE_WARNING_BYTES", 4000)
+    with pytest.warns(FCSConversionWarning, match="TEXT segment is large"):
+        anndata_to_fcs(adata)
+
+    monkeypatch.setattr(_convert, "MAX_TEXT_BYTES", 4000)
+    with pytest.raises(ValueError, match="exceeds the maximum size"):
+        anndata_to_fcs(adata)
+
+
+def test_text_size_bound(adata_annotated: AnnData) -> None:
+    """The estimated TEXT size is an upper bound of the TEXT segment written by FlowIO."""
+    sizes: list[int] = []
+    original = _convert._check_text_size
+
+    def record(metadata, channel_names, pns_labels):
+        original(metadata, channel_names, pns_labels)
+        pairs = [*metadata.items(), *(("pnn", n) for n in channel_names), *(("pns", s) for s in pns_labels)]
+        sizes.append(512 + 64 * len(channel_names) + sum(len(k) + len(v.encode()) + v.count("/") + 3 for k, v in pairs))
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(_convert, "_check_text_size", record)
+        handle = io.BytesIO()
+        write_fcs(adata_annotated, handle)
+    header = handle.getvalue()[:58].decode()
+    text_size = int(header[18:26]) - int(header[10:18]) + 1
+    assert text_size <= sizes[0] < text_size + 512 + 64 * (adata_annotated.n_vars + 1)

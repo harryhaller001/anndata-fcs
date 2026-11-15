@@ -165,6 +165,26 @@ def test_anndata_roundtrip_gated_subset(adata_annotated: AnnData) -> None:
     )
 
 
+def test_anndata_roundtrip_gated_subset_default_obs() -> None:
+    """Without stored obs, obs_names of exported gates are the positions of the events in the written object."""
+    adata = AnnData(np.arange(20, dtype=np.float32).reshape(10, 2))
+    adata.var_names = ["A", "B"]
+    fdata = anndata_to_fcs(adata)
+    assert not any(key.endswith("obs") for key in fdata.text if key.startswith(KEYWORD_PREFIX))
+
+    subset = np.array([7, 2, 5])
+    metadata = {key: value for key, value in fdata.text.items() if key not in STRUCTURAL_KEYWORDS}
+    handle = io.BytesIO()
+    flowio.create_fcs(
+        handle, fdata.as_array(preprocess=False)[subset].ravel(), fdata.pnn_labels, metadata_dict=metadata
+    )
+    handle.seek(0)
+
+    restored = fcs_to_anndata(flowio.FlowData(handle))
+    assert list(restored.obs_names) == ["7", "2", "5"]
+    np.testing.assert_array_equal(restored.X, adata.X[subset])
+
+
 @pytest.mark.parametrize(
     ("fixture", "expected_warnings"),
     [

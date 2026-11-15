@@ -13,6 +13,7 @@ from anndata_fcs._keywords import (
     remove_channel,
     split_text,
     unescape_key,
+    unique_channel_names,
 )
 
 
@@ -77,41 +78,67 @@ def test_assign_channels() -> None:
     assert global_keywords == {"cyt": "LSRII"}
 
 
+def test_assign_channels_duplicate_names() -> None:
+    """Duplicate $PnN are made unique like var_names when reading, so each duplicate keeps its keywords."""
+    keywords = {"p1n": "A", "p1s": "CD3", "p2n": "A", "p2s": "CD4", "p3n": "A-1", "p3s": "CD8"}
+    names = unique_channel_names(["A", "A", "A-1"])
+    assert len(set(names)) == 3 and names[0] == "A"
+
+    channels, _ = assign_channels(keywords, list(reversed(names)), n_channels=3)
+    assert [channel["s"] for channel in channels] == ["CD8", "CD4", "CD3"]
+
+
 def test_build_metadata() -> None:
     channels = [
         {"n": "A", "b": "16", "e": "0,0", "s": "CD3", "r": "1024", "v": "500"},
         {"n": "B", "r": "262144"},
     ]
-    metadata, pns = build_metadata(channels, {"cyt": "LSRII", "$DATE": "today", "tot": "5", "a/b": "c"})
+    metadata, pns, messages = build_metadata(channels, {"cyt": "LSRII", "$DATE": "today", "tot": "5", "a/b": "c"})
 
     assert pns == ["CD3", ""]
     assert metadata == {"p1r": "1024", "p1v": "500", "p2r": "262144", "cyt": "LSRII", "date": "today", "a//b": "c"}
+    assert messages == []
 
 
 def test_build_metadata_empty_value() -> None:
-    with pytest.warns(FCSConversionWarning, match="empty value"):
-        metadata, _ = build_metadata([{"n": "A", "s": ""}], {"com": ""})
+    metadata, _, messages = build_metadata([{"n": "A", "s": ""}], {"com": ""})
     assert metadata == {}
+    assert len(messages) == 2 and all("empty value" in message for message in messages)
 
 
-@pytest.mark.parametrize("value", ["/leading", "trailing/", "dollar $ sign"])
-def test_build_metadata_unparseable_value(value: str) -> None:
-    with pytest.warns(FCSConversionWarning):
-        metadata, _ = build_metadata([], {"com": value})
-    assert metadata == {"com": value}
+@pytest.mark.parametrize("value", ["/leading", "trailing/", "/"])
+def test_build_metadata_delimiter_value(value: str) -> None:
+    """FlowIO cannot parse values starting or ending with the delimiter, which also corrupts following keywords."""
+    metadata, _, messages = build_metadata([{"s": value}], {"com": value, "cyt": "LSRII"})
+    assert metadata == {"cyt": "LSRII"}
+    assert len(messages) == 2 and all("It is not written" in message for message in messages)
+
+
+@pytest.mark.parametrize("key", ["/leading", "trailing/"])
+def test_build_metadata_delimiter_keyword(key: str) -> None:
+    metadata, _, messages = build_metadata([], {key: "value", "cyt": "LSRII"})
+    assert metadata == {"cyt": "LSRII"}
+    assert len(messages) == 1 and "delimiter" in messages[0]
+
+
+def test_build_metadata_dollar_value() -> None:
+    """Values containing '$' are written, although FlowIO removes '$' when parsing."""
+    metadata, _, messages = build_metadata([], {"com": "dollar $ sign"})
+    assert metadata == {"com": "dollar $ sign"}
+    assert len(messages) == 1 and "'$'" in messages[0]
 
 
 def test_build_metadata_invalid_keyword() -> None:
-    with pytest.warns(FCSConversionWarning, match="printable ASCII"):
-        metadata, _ = build_metadata([], {"größe": "1", "cyt": "LSRII"})
+    metadata, _, messages = build_metadata([], {"größe": "1", "cyt": "LSRII"})
     assert metadata == {"cyt": "LSRII"}
+    assert len(messages) == 1 and "printable ASCII" in messages[0]
 
 
 def test_build_metadata_channel_keyword_in_global_keywords() -> None:
     """$Pn keywords of channels beyond $PAR must not be attributed to channels of the written file."""
-    with pytest.warns(FCSConversionWarning, match="'p2foo' refers to channel 2"):
-        metadata, _ = build_metadata([{"r": "1"}, {"r": "1"}], {"p2foo": "x", "p3foo": "y"})
+    metadata, _, messages = build_metadata([{"r": "1"}, {"r": "1"}], {"p2foo": "x", "p3foo": "y"})
     assert metadata == {"p1r": "1", "p2r": "1", "p3foo": "y"}
+    assert len(messages) == 1 and "'p2foo' refers to channel 2" in messages[0]
 
 
 def test_format_timestamp() -> None:
@@ -124,6 +151,12 @@ def test_format_timestamp() -> None:
 )
 def test_parse_pne(value: str, expected: tuple[float, float]) -> None:
     assert parse_pne(value) == expected
+
+
+@pytest.mark.parametrize("value", ["", "4", "4,1,0", "a,b"])
+def test_parse_pne_invalid(value: str) -> None:
+    with pytest.raises(ValueError, match="Invalid \\$PnE value"):
+        parse_pne(value)
 
 
 SPILLOVER = "3,FL1-A,FL2-A,FL3-A,1,0.1,0.04,0.2,1,0.13,0.15,0.08,1"

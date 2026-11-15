@@ -1,6 +1,6 @@
 """Classification of FCS TEXT keywords and construction of FlowIO metadata dictionaries.
 
-All functions in this module operate on plain dictionaries and are independent of AnnData.
+All functions in this module operate on plain dictionaries and do not depend on AnnData objects.
 """
 
 import math
@@ -10,8 +10,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
+from anndata.utils import make_index_unique
 
-from anndata_fcs._exceptions import FCSConversionWarning
+from anndata_fcs._exceptions import warn
 from anndata_fcs._schema import (
     CHANNEL_KEYWORD_PATTERN,
     FCS_DELIMITER,
@@ -87,8 +89,6 @@ def split_text(text: Mapping[str, str], n_channels: int) -> SplitText:
     result = SplitText()
 
     for key, value in text.items():
-        key = key.lower()
-
         channel = parse_channel_keyword(key, n_channels)
         if key in STRUCTURAL_KEYWORDS or (channel is not None and channel[1] in STRUCTURAL_CHANNEL_SUFFIXES):
             result.structural[key] = value.strip()
@@ -121,6 +121,21 @@ def remove_channel(keywords: Mapping[str, str], number: int, n_channels: int) ->
     return result
 
 
+def unique_channel_names(names: Sequence[str]) -> list[str]:
+    """Make channel names (``$PnN``) unique by appending ``-1``, ``-2``, ... to duplicates.
+
+    Used when reading (``var_names``) and when writing (to assign per-channel keywords to the de-duplicated names),
+    so both sides agree on the names.
+    """
+    index = pd.Index([str(name) for name in names], dtype=object)
+    if index.is_unique:
+        return list(index)
+    with warnings.catch_warnings():
+        # anndata warns about suffix collisions, which make_index_unique resolves
+        warnings.simplefilter("ignore", UserWarning)
+        return [str(name) for name in make_index_unique(index)]
+
+
 def assign_channels(
     keywords: Mapping[str, str],
     channel_names: Sequence[str],
@@ -129,7 +144,8 @@ def assign_channels(
     """Assign per-channel keywords to the channels of the written file by their name (``$PnN``).
 
     Channels of ``keywords`` are identified by ``p<n>n``. Matching by name keeps the keywords with their channel when
-    channels are removed or reordered.
+    channels are removed or reordered. Duplicate names are made unique with :func:`unique_channel_names` (in channel
+    order), as done for ``var_names`` when reading, so each duplicate keeps its own keywords.
 
     Args:
         keywords: Keywords in the FlowIO convention, e.g. ``{"p1n": "FSC-A", "p1r": "262144", "cyt": "LSRII"}``.
@@ -148,7 +164,6 @@ def assign_channels(
         if channel is not None and channel[1] == "n":
             by_number[channel[0]] = {}
 
-    numbers: dict[str, int] = {}
     global_keywords: dict[str, str] = {}
     for key, value in keywords.items():
         channel = parse_channel_keyword(key, n_channels)
@@ -156,8 +171,10 @@ def assign_channels(
             global_keywords[key] = value
             continue
         by_number[channel[0]][channel[1]] = value
-        if channel[1] == "n":
-            numbers[value] = min(numbers.get(value, channel[0]), channel[0])
+
+    ordered = sorted(by_number)
+    names = unique_channel_names([by_number[number]["n"] for number in ordered])
+    numbers = dict(zip(names, ordered, strict=True))
 
     channels = [dict(by_number[numbers[name]]) if name in numbers else {} for name in channel_names]
     return channels, global_keywords
@@ -168,46 +185,49 @@ def normalize_keyword(key: str) -> str:
     return key.lower().lstrip("$")
 
 
-def _check_keyword(key: str) -> bool:
-    """Check whether a keyword name is valid according to FCS 3.1. Warns if not.
+def _check_keyword(key: str, messages: list[str]) -> bool:
+    """Check whether a keyword name can be written. Appends a message to ``messages`` if not.
 
-    Keyword names must not be empty and may only contain printable ASCII characters (only values are UTF-8).
+    Keyword names must not be empty and may only contain printable ASCII characters (only values are UTF-8). FlowIO
+    cannot parse keywords starting or ending with the delimiter, which also corrupts the neighbouring keywords.
     """
     if key == "" or not all(32 <= ord(character) <= 126 for character in key):
-        warnings.warn(
+        messages.append(
             f"Keyword {key!r} is not valid in FCS 3.1, which only allows non-empty keywords of printable ASCII "
-            "characters. It is not written.",
-            FCSConversionWarning,
-            stacklevel=4,
+            "characters. It is not written."
+        )
+        return False
+    if key.startswith(FCS_DELIMITER) or key.endswith(FCS_DELIMITER):
+        messages.append(
+            f"Keyword {key!r} starts or ends with the delimiter '{FCS_DELIMITER}', which FlowIO cannot parse. It is "
+            "not written."
         )
         return False
     return True
 
 
-def _check_value(key: str, value: str) -> bool:
-    """Check whether a keyword value can be written and read back by FlowIO. Warns if not."""
+def _check_value(key: str, value: str, messages: list[str]) -> bool:
+    """Check whether a keyword value can be written and read back by FlowIO. Appends messages to ``messages``.
+
+    Returns:
+        bool: Whether the keyword is written. Values containing ``$`` are written, although FlowIO removes ``$``.
+    """
     if value == "":
-        warnings.warn(
-            f"Keyword '{key}' has an empty value, which is not allowed by the FCS standard. It is not written.",
-            FCSConversionWarning,
-            stacklevel=4,
+        messages.append(
+            f"Keyword '{key}' has an empty value, which is not allowed by the FCS standard. It is not written."
         )
         return False
 
     if value.startswith(FCS_DELIMITER) or value.endswith(FCS_DELIMITER):
-        warnings.warn(
-            f"Value of keyword '{key}' starts or ends with the delimiter '{FCS_DELIMITER}' and cannot be parsed "
-            "reliably by FlowIO.",
-            FCSConversionWarning,
-            stacklevel=4,
+        # Written, it would also corrupt the following keywords when parsed by FlowIO
+        messages.append(
+            f"Value of keyword '{key}' starts or ends with the delimiter '{FCS_DELIMITER}', which FlowIO cannot parse. "
+            "It is not written."
         )
+        return False
 
     if "$" in value:
-        warnings.warn(
-            f"Value of keyword '{key}' contains '$', which FlowIO removes when parsing FCS files.",
-            FCSConversionWarning,
-            stacklevel=4,
-        )
+        messages.append(f"Value of keyword '{key}' contains '$', which FlowIO removes when parsing FCS files.")
 
     return True
 
@@ -215,7 +235,7 @@ def _check_value(key: str, value: str) -> bool:
 def build_metadata(
     channels: Sequence[Mapping[str, str]],
     global_keywords: Mapping[str, str],
-) -> tuple[dict[str, str], list[str]]:
+) -> tuple[dict[str, str], list[str], list[str]]:
     """Build the arguments for :func:`flowio.create_fcs` from channel and global keywords.
 
     ``$PnN``, ``$PnB`` and ``$PnE`` are ignored, since they are set by :func:`flowio.create_fcs`. ``$PnS`` is
@@ -226,10 +246,13 @@ def build_metadata(
         global_keywords: Global keywords. Structural keywords are ignored.
 
     Returns:
-        tuple[dict[str, str], list[str]]: Metadata dictionary and list of ``$PnS`` values (empty string if absent).
+        tuple[dict[str, str], list[str], list[str]]: Metadata dictionary, list of ``$PnS`` values (empty string if
+        absent) and descriptions of the information that is lost (keywords that are not written or cannot be read
+        back exactly).
     """
     metadata: dict[str, str] = {}
     pns_labels: list[str] = []
+    messages: list[str] = []
 
     for channel_index, channel in enumerate(channels):
         channel_number = channel_index + 1
@@ -240,7 +263,7 @@ def build_metadata(
                 continue
 
             key = f"p{channel_number}{suffix}"
-            if not _check_keyword(key) or not _check_value(key, value):
+            if not _check_keyword(key, messages) or not _check_value(key, value, messages):
                 continue
 
             if suffix == "s":
@@ -257,19 +280,17 @@ def build_metadata(
         if channel is not None:
             # Global keywords only hold $Pn keywords not assigned to a channel. Written as is, they would be attributed
             # to a different channel.
-            warnings.warn(
+            messages.append(
                 f"Global keyword '{key}' refers to channel {channel[0]} of the written file, but is not assigned to a "
-                f"channel by a matching '$P<n>N' keyword. It is not written.",
-                FCSConversionWarning,
-                stacklevel=3,
+                f"channel by a matching '$P<n>N' keyword. It is not written."
             )
             continue
 
-        if not _check_keyword(key) or not _check_value(key, value):
+        if not _check_keyword(key, messages) or not _check_value(key, value, messages):
             continue
         metadata[_escape_delimiter(key)] = value
 
-    return metadata, pns_labels
+    return metadata, pns_labels, messages
 
 
 def _escape_delimiter(key: str) -> str:
@@ -304,7 +325,13 @@ def parse_pne(value: str) -> tuple[float, float]:
     Raises:
         ValueError: If the value is not of the form ``f1,f2``.
     """
-    decades, log0 = (float(part) for part in value.split(","))
+    parts = value.split(",")
+    try:
+        if len(parts) != 2:
+            raise ValueError
+        decades, log0 = float(parts[0]), float(parts[1])
+    except ValueError:
+        raise ValueError(f"Invalid $PnE value {value!r}, expected 'f1,f2' (e.g. '0,0' or '4,1').") from None
     if decades != 0 and log0 == 0:
         log0 = 1.0
     return decades, log0
@@ -315,7 +342,11 @@ def linear_range(decades: float, log0: float) -> str:
     return str(math.ceil(10**decades * log0))
 
 
-def check_spillover(value: str, channel_names: Sequence[str]) -> tuple[str | None, list[str]]:
+def check_spillover(
+    value: str,
+    channel_names: Sequence[str],
+    keyword: str = "spillover",
+) -> tuple[str | None, list[str]]:
     """Check ``$SPILLOVER`` against the channels of the file that is written.
 
     ``$SPILLOVER`` is ``n,name_1,...,name_n,s_11,s_12,...,s_nn``, where the names are ``$PnN`` values and the spillover
@@ -323,8 +354,9 @@ def check_spillover(value: str, channel_names: Sequence[str]) -> tuple[str | Non
     are removed from the matrix, since FCS 3.1 requires all names to refer to parameters.
 
     Args:
-        value: Value of the ``$SPILLOVER`` keyword.
+        value: Value of the spillover keyword.
         channel_names: ``$PnN`` values of the written file.
+        keyword: Name of the keyword in the FlowIO convention (e.g. ``spill``), used in messages.
 
     Warns if the spillover matrix is not invertible (it is still written).
 
@@ -332,15 +364,16 @@ def check_spillover(value: str, channel_names: Sequence[str]) -> tuple[str | Non
         tuple[str | None, list[str]]: Value to write (``None`` if it cannot be written) and descriptions of the
         information that is lost.
     """
+    label = f"${keyword.upper()}"
     parts = [part.strip() for part in value.split(",")]
     try:
         n = int(parts[0])
         names = parts[1 : n + 1]
         coefficients = np.asarray([float(part) for part in parts[n + 1 :]], dtype=np.float64)
     except ValueError:
-        return None, ["$SPILLOVER is malformed and is dropped."]
+        return None, [f"{label} is malformed and is dropped."]
     if n < 1 or len(names) != n or coefficients.size != n * n or len(set(names)) != n:
-        return None, ["$SPILLOVER is malformed and is dropped."]
+        return None, [f"{label} is malformed and is dropped."]
 
     messages: list[str] = []
     available = set(channel_names)
@@ -348,11 +381,9 @@ def check_spillover(value: str, channel_names: Sequence[str]) -> tuple[str | Non
     if len(keep) < n:
         missing = [name for name in names if name not in available]
         if len(keep) == 0:
-            return None, [
-                f"$SPILLOVER refers to channels not present in var_names ({', '.join(missing)}) and is dropped."
-            ]
+            return None, [f"{label} refers to channels not present in var_names ({', '.join(missing)}) and is dropped."]
         messages.append(
-            f"$SPILLOVER refers to channels not present in var_names ({', '.join(missing)}). "
+            f"{label} refers to channels not present in var_names ({', '.join(missing)}). "
             "They are removed from the spillover matrix."
         )
         matrix_parts = parts[n + 1 :]
@@ -363,10 +394,6 @@ def check_spillover(value: str, channel_names: Sequence[str]) -> tuple[str | Non
 
     matrix = coefficients.reshape(n, n)
     if not np.all(np.isfinite(matrix)) or np.linalg.matrix_rank(matrix) < n:
-        warnings.warn(
-            "$SPILLOVER matrix is not invertible, so it cannot be used for compensation.",
-            FCSConversionWarning,
-            stacklevel=4,
-        )
+        warn(f"{label} matrix is not invertible, so it cannot be used for compensation.")
 
     return value, messages

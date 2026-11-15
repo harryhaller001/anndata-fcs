@@ -42,6 +42,10 @@ STRUCTURAL_CHANNEL_SUFFIXES: frozenset[str] = frozenset({"b"})
 CHANNEL_KEYWORD_PATTERN: re.Pattern[str] = re.compile(r"^p(\d+)(\D.*)$")
 """Matches per-channel keywords such as ``p1n``, ``p12s`` or ``p3display``."""
 
+SPILLOVER_KEYWORDS: tuple[str, ...] = ("spillover", "spill")
+"""Keywords holding a spillover matrix in the ``n,name_1,...,name_n,s_11,...,s_nn`` format: ``$SPILLOVER`` (FCS 3.1)
+and ``$SPILL`` (FCS 3.0, e.g. written by BD FACSDiva)."""
+
 FCS_DELIMITER: str = "/"
 """Delimiter used by :func:`flowio.create_fcs` when writing the TEXT segment."""
 
@@ -49,7 +53,8 @@ MAX_EXACT_FLOAT32_INT: int = 2**24
 """Largest integer for which all smaller integers are exactly representable as float32."""
 
 TEXT_SIZE_WARNING_BYTES: int = 10_000_000
-"""Embedded payloads above this size trigger a warning, since many FCS readers struggle with large TEXT segments."""
+"""TEXT segments above this size trigger a warning, since many FCS readers struggle with large TEXT segments."""
 
-MAX_TEXT_BYTES: int = 99_999_999 - 256
-"""The FCS header stores the TEXT end offset in 8 ASCII digits, which limits the TEXT segment size."""
+MAX_TEXT_BYTES: int = 99_999_999 - 255
+"""The FCS header stores the TEXT end offset in 8 ASCII digits, which limits the TEXT segment size. FlowIO starts the
+TEXT segment at byte 256, so it ends at byte ``255 + size``."""
