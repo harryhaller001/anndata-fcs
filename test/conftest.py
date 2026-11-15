@@ -12,6 +12,7 @@ BASEDIR = os.path.dirname(__file__)
 TESTING_FILENAME = os.path.join(BASEDIR, "testing.h5ad")
 
 # BD LSR-II file from the fcsparser test suite (https://github.com/eyurtsev/fcsparser, MIT license)
+# wget https://github.com/eyurtsev/fcsparser/blob/master/fcsparser/tests/data/FlowCytometers/HTS_BD_LSR-II/HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs?raw=True -O HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs
 LSR_II_FILENAME = os.path.join(BASEDIR, "data", "HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs")
 
 

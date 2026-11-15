@@ -1,15 +1,8 @@
-"""Round trip tests for the conversion contract.
-
-1. FCS -> AnnData -> FCS keeps event data, per-channel keywords and non-structural global keywords.
-2. AnnData -> FCS -> AnnData keeps X, var_names, var, obs_names, obs and JSON serialisable uns entries.
-3. FCS -> AnnData -> h5ad -> AnnData -> FCS gives the same result as 1.
-"""
-
 import io
 import os
 import re
 import warnings
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 import flowio
@@ -26,7 +19,7 @@ MODIFICATION_KEYWORDS = frozenset({"originality", "last_modified"})
 
 
 def _comparable_text(fdata: flowio.FlowData) -> dict[str, str]:
-    """Keywords expected to be identical after a round trip ($PnB and modification keywords are regenerated)."""
+    """Keywords expected to be identical after a round trip."""
     return {
         key: value
         for key, value in fdata.text.items()
@@ -42,7 +35,7 @@ def _without_modification(text: dict[str, str]) -> dict[str, str]:
 
 
 @contextmanager
-def _expect_conversion_warnings(*patterns: str) -> Iterator[None]:
+def _expect_conversion_warnings(*patterns: str) -> Generator[None, None, None]:
     """Assert that exactly the given FCSConversionWarnings (regex patterns) are emitted, no more and no less."""
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always", FCSConversionWarning)
@@ -69,11 +62,6 @@ def _assert_same_anndata(restored: AnnData, original: AnnData) -> None:
     assert list(restored.var_names) == list(original.var_names)
     pd.testing.assert_frame_equal(restored.obs, original.obs, check_index_type=False)
     pd.testing.assert_frame_equal(restored.var[original.var.columns], original.var, check_index_type=False)
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-# 1. FCS -> AnnData -> FCS
-# ---------------------------------------------------------------------------------------------------------------------
 
 
 def test_fcs_roundtrip_float(lsr_ii_fdata: flowio.FlowData) -> None:
@@ -113,11 +101,6 @@ def test_fcs_roundtrip_preprocessed(int_fdata: flowio.FlowData) -> None:
         fdata = _write_read(adata, index_channel=None)
 
     np.testing.assert_allclose(fdata.as_array(preprocess=True), int_fdata.as_array(preprocess=True), rtol=1e-6)
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-# 2. AnnData -> FCS -> AnnData
-# ---------------------------------------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("index_channel", ["barcode_rank", None])
@@ -170,11 +153,6 @@ def test_anndata_roundtrip_gated_subset(adata_annotated: AnnData) -> None:
     pd.testing.assert_frame_equal(
         restored.var[adata_annotated.var.columns], adata_annotated.var, check_index_type=False
     )
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-# 3. FCS -> AnnData -> h5ad -> AnnData -> FCS
-# ---------------------------------------------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(

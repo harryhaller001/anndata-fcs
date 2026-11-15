@@ -9,10 +9,6 @@ from anndata import AnnData
 from anndata_fcs import FCSConversionWarning, anndata_to_fcs, fcs_to_anndata, write_fcs
 from anndata_fcs._schema import KW_OBS, KW_SCHEMA, STRUCTURAL_KEYWORDS
 
-# ---------------------------------------------------------------------------------------------------------------------
-# FCS -> AnnData
-# ---------------------------------------------------------------------------------------------------------------------
-
 
 def test_fcs_to_anndata_float(lsr_ii_fdata: flowio.FlowData) -> None:
     adata = fcs_to_anndata(lsr_ii_fdata)
@@ -83,11 +79,6 @@ def test_fcs_to_anndata_duplicate_channels() -> None:
     with pytest.warns(FCSConversionWarning, match="not unique"):
         adata = fcs_to_anndata(flowio.FlowData(handle))
     assert adata.var_names.is_unique
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-# AnnData -> FCS
-# ---------------------------------------------------------------------------------------------------------------------
 
 
 def test_anndata_to_fcs(adata_annotated: AnnData) -> None:
