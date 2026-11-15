@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from anndata import AnnData
 
-from anndata_fcs import _convert, read_fcs, write_fcs
+from anndata_fcs import FCSConversionWarning, _convert, read_fcs, write_fcs
 from test.conftest import LSR_II_FILENAME
 
 
@@ -32,6 +32,23 @@ def test_read_fcs_handle_and_flowdata(int_fcs_bytes: bytes, int_fdata: flowio.Fl
 def test_read_fcs_flowio_kwargs(int_fcs_bytes: bytes) -> None:
     adata = read_fcs(io.BytesIO(int_fcs_bytes), ignore_offset_discrepancy=True, preprocess=True)
     assert adata.uns["fcs"]["preprocessed"] is True
+
+
+def test_write_fcs_use_raw(lsr_ii_fdata: flowio.FlowData) -> None:
+    adata = read_fcs(lsr_ii_fdata)
+    adata.X = adata.X * 2
+
+    handle = io.BytesIO()
+    with pytest.warns(FCSConversionWarning, match="X differs from raw"):
+        write_fcs(adata, handle, index_channel=None)
+    handle.seek(0)
+    np.testing.assert_array_equal(flowio.FlowData(handle).as_array(preprocess=False), adata.raw.X)
+
+    handle = io.BytesIO()
+    with pytest.warns(FCSConversionWarning, match="raw differs from X"):
+        write_fcs(adata, handle, index_channel=None, use_raw=False)
+    handle.seek(0)
+    np.testing.assert_array_equal(flowio.FlowData(handle).as_array(preprocess=False), adata.X)
 
 
 def test_write_fcs(adata: AnnData, tmp_path: os.PathLike, monkeypatch: pytest.MonkeyPatch) -> None:

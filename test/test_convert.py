@@ -16,6 +16,10 @@ def test_fcs_to_anndata_float(lsr_ii_fdata: flowio.FlowData) -> None:
     assert adata.shape == (lsr_ii_fdata.event_count, lsr_ii_fdata.channel_count)
     assert adata.X.dtype == np.float32
     np.testing.assert_array_equal(adata.X, lsr_ii_fdata.as_array(preprocess=False))
+    np.testing.assert_array_equal(adata.raw.X, adata.X)
+    assert adata.raw.X is not adata.X
+    assert list(adata.raw.var_names) == list(adata.var_names)
+    pd.testing.assert_frame_equal(adata.raw.var, adata.var)
 
     assert list(adata.var_names) == lsr_ii_fdata.pnn_labels
     assert adata.var.loc["FSC-A", "pnr"] == "262144"
@@ -53,17 +57,19 @@ def test_fcs_to_anndata_int(int_fdata: flowio.FlowData) -> None:
 
 
 def test_fcs_to_anndata_preprocess(int_fdata: flowio.FlowData) -> None:
+    """Preprocessing only modifies X. raw, var and uns describe the event data as stored in the file."""
+    unprocessed = fcs_to_anndata(int_fdata)
     adata = fcs_to_anndata(int_fdata, preprocess=True)
 
     np.testing.assert_array_equal(adata.X, int_fdata.as_array(preprocess=True))
+    np.testing.assert_array_equal(adata.raw.X, int_fdata.as_array(preprocess=False))
+    assert adata.raw.X.dtype == np.uint16
     assert adata.uns["fcs"]["preprocessed"] is True
-    assert (adata.var["pne"] == "0,0").all()
-    assert (adata.var["png"] == "1.0").all()
-    # $PnR of the log scaled channel ($PnE/4,1/) is the upper bound of the linear scale values
-    assert adata.var.loc["FL1-H", "pnr"] == "10000"
-    assert adata.var.loc["FSC-A", "pnr"] == "1024"
-    assert "timestep" not in adata.uns["fcs"]["text"]
-    assert adata.uns["fcs"]["source"]["timestep"] == "0.01"
+
+    pd.testing.assert_frame_equal(adata.var, unprocessed.var)
+    pd.testing.assert_frame_equal(adata.raw.var, unprocessed.raw.var)
+    assert adata.uns["fcs"]["text"] == unprocessed.uns["fcs"]["text"]
+    assert adata.uns["fcs"]["source"] == unprocessed.uns["fcs"]["source"]
 
 
 def test_fcs_to_anndata_without_events(int_fcs_bytes: bytes) -> None:
@@ -169,7 +175,7 @@ def test_anndata_to_fcs_unsupported_metadata(adata: AnnData) -> None:
 def test_anndata_to_fcs_analysis(int_fdata: flowio.FlowData) -> None:
     adata = fcs_to_anndata(int_fdata)
     # Linear scale keeps the integer data exact in float32, so only the ANALYSIS segment is lost
-    adata.var["pne"] = "0,0"
+    adata.raw.var["pne"] = "0,0"
 
     with pytest.warns(FCSConversionWarning, match="ANALYSIS"):
         anndata_to_fcs(adata)
@@ -199,7 +205,7 @@ def test_anndata_to_fcs_store_obs(adata_annotated: AnnData) -> None:
 def test_anndata_to_fcs_originality(int_fdata: flowio.FlowData) -> None:
     """Written files are derived copies, which FCS 3.1 marks with $ORIGINALITY and $LAST_MODIFIED."""
     adata = fcs_to_anndata(int_fdata)
-    adata.var["pne"] = "0,0"
+    adata.raw.var["pne"] = "0,0"
     del adata.uns["fcs"]["analysis"]
     adata.uns["fcs"]["text"]["originality"] = "Original"
     adata.uns["fcs"]["text"]["last_modified"] = "01-JAN-2000 00:00:00.00"
@@ -222,6 +228,7 @@ def test_anndata_to_fcs_spillover(lsr_ii_fdata: flowio.FlowData) -> None:
 
     # $SPILLOVER refers to $PnN values, so removed channels are removed from the matrix
     subset = adata[:, [name for name in adata.var_names if name != "AmCyan-A"]].copy()
+    subset.raw = None
     with pytest.warns(FCSConversionWarning, match="AmCyan-A"):
         fdata = anndata_to_fcs(subset)
     assert fdata.text["spillover"] == "1,FITC-A,1"
@@ -249,3 +256,62 @@ def test_anndata_to_fcs_keyword_column_with_digit() -> None:
 
     restored = fcs_to_anndata(fdata)
     assert list(restored.var["pn1x"]) == ["a", "b"]
+
+
+def test_anndata_to_fcs_use_raw(lsr_ii_fdata: flowio.FlowData) -> None:
+    """raw is written by default. X is written with use_raw=False or if there is no raw."""
+    adata = fcs_to_anndata(lsr_ii_fdata)
+    subset = adata[:, ["FSC-A", "SSC-A"]].copy()
+    subset.X = subset.X * 2
+
+    with pytest.warns(FCSConversionWarning, match="X differs from raw"):
+        fdata = anndata_to_fcs(subset, index_channel=None)
+    assert fdata.pnn_labels == lsr_ii_fdata.pnn_labels
+    np.testing.assert_array_equal(fdata.as_array(preprocess=False), lsr_ii_fdata.as_array(preprocess=False))
+
+    with pytest.warns(FCSConversionWarning, match="raw differs from X"):
+        fdata = anndata_to_fcs(subset, index_channel=None, use_raw=False)
+    assert fdata.pnn_labels == ["FSC-A", "SSC-A"]
+    np.testing.assert_array_equal(fdata.as_array(preprocess=False), subset.X)
+
+    with pytest.raises(ValueError, match="raw differs from X"):
+        anndata_to_fcs(subset, use_raw=False, strict=True)
+
+    subset.raw = None
+    np.testing.assert_array_equal(anndata_to_fcs(subset, index_channel=None).as_array(preprocess=False), subset.X)
+    with pytest.raises(ValueError, match="no raw"):
+        anndata_to_fcs(subset, use_raw=True)
+
+
+def test_anndata_to_fcs_use_raw_same_events(int_fdata: flowio.FlowData) -> None:
+    """No warning about dropping X or raw if both hold the same event data."""
+    adata = fcs_to_anndata(int_fdata)
+    adata.var["pne"] = "0,0"
+    adata.raw.var["pne"] = "0,0"
+    del adata.uns["fcs"]["analysis"]
+
+    for use_raw in (True, False):
+        anndata_to_fcs(adata, use_raw=use_raw, strict=True)
+
+
+def test_anndata_to_fcs_preprocessed_x(int_fdata: flowio.FlowData) -> None:
+    """Keywords are adjusted to describe preprocessed X, so preprocessing the written file does not change it."""
+    adata = fcs_to_anndata(int_fdata, preprocess=True)
+    del adata.uns["fcs"]["analysis"]
+
+    with pytest.warns(FCSConversionWarning) as record:
+        fdata = anndata_to_fcs(adata, use_raw=False, index_channel=None)
+    messages = " ".join(str(warning.message) for warning in record)
+    assert "32-bit float" in messages and "raw differs from X" in messages
+
+    np.testing.assert_allclose(fdata.as_array(preprocess=False), adata.X, rtol=1e-6)
+    np.testing.assert_allclose(fdata.as_array(preprocess=True), adata.X, rtol=1e-6)
+    assert fdata.text["p2e"] == "0,0"
+    # $PnR of the log scaled channel ($PnE/4,1/) is the upper bound of the linear scale values
+    assert fdata.text["p2r"] == "10000"
+    assert fdata.text["p1r"] == "1024"
+    assert fdata.text["p3g"] == "1.0"
+    assert fdata.text["timestep"] == "1"
+    # The source object is not modified
+    assert adata.var.loc["FL1-H", "pne"] == "4,1"
+    assert adata.uns["fcs"]["text"]["timestep"] == "0.01"

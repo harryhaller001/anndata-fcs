@@ -2,7 +2,8 @@
 
 Layout produced by :func:`anndata_fcs.fcs_to_anndata`:
 
-* ``X``: event matrix (events x channels).
+* ``raw``: unprocessed event matrix (events x channels) and a copy of ``var``.
+* ``X``: event matrix (events x channels), unprocessed or preprocessed (``uns["fcs"]["preprocessed"]``).
 * ``var.index``: channel names (``$PnN``).
 * ``var`` columns ``pn<suffix>``: per-channel keywords (``$PnS`` -> ``pns``, ``$PnR`` -> ``pnr``, ...),
   stored as raw strings.

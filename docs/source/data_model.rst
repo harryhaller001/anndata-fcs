@@ -21,10 +21,13 @@ FCS to AnnData
 
    * - AnnData
      - FCS
+   * - ``raw``
+     - Unprocessed event data in the stored data type (``float32`` for ``$DATATYPE/F``, ``uint`` for ``I``) and a
+       copy of ``var``.
    * - ``X``
-     - Event data in the stored data type (``float32`` for ``$DATATYPE/F``, ``uint`` for ``I``). With
-       ``preprocess=True``, gain (``$PnG``), log (``$PnE``) and time (``$TIMESTEP``) scaling is applied, and
-       ``pne``, ``png`` and ``pnr`` are updated to describe the linear scale values.
+     - Unprocessed event data, like ``raw.X``. With ``preprocess=True``, gain (``$PnG``), log (``$PnE``) and time
+       (``$TIMESTEP``) scaling is applied. Only ``X`` is modified: ``var`` and ``uns["fcs"]`` keep the keywords of the
+       file and describe ``raw``.
    * - ``var_names``
      - Channel names (``$PnN``).
    * - ``var["pn<suffix>"]``
@@ -55,10 +58,12 @@ AnnData to FCS
 
    * - AnnData
      - FCS
-   * - ``X``
-     - Event data as 32-bit float, the only data type FlowIO can write. Channels on log scale are converted to linear
-       scale.
-   * - ``var_names``, ``var["pn<suffix>"]``
+   * - ``raw.X`` (default) or ``X``
+     - Event data as 32-bit float, the only data type FlowIO can write. ``raw`` is written if present, use
+       ``use_raw=False`` to write ``X`` instead. Channels on log scale are converted to linear scale. If ``X`` is
+       written and was preprocessed (``uns["fcs"]["preprocessed"]``), ``$PnE``, ``$PnG``, ``$PnR`` and ``$TIMESTEP``
+       are adjusted to describe the preprocessed values.
+   * - ``raw.var_names``, ``raw.var["pn<suffix>"]`` (or ``var_names``, ``var["pn<suffix>"]`` with ``use_raw=False``)
      - ``$PnN`` and per-channel keywords. Use ``pns_key`` to take marker labels (``$PnS``) from another column.
        ``$PnR`` defaults to the maximum of 262144 and the channel maximum.
    * - ``uns["fcs"]["text"]``
@@ -66,7 +71,7 @@ AnnData to FCS
        channels by ``$PnN``. ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time.
    * - ``obs``, ``obs_names``
      - JSON encoded in the ``ANNDATA_FCS_OBS`` keyword (``store_obs=True``).
-   * - Other ``var`` columns
+   * - Other ``var`` (``raw.var``) columns
      - JSON encoded in the ``ANNDATA_FCS_VAR`` keyword.
    * - Other ``uns`` entries
      - JSON encoded in the ``ANNDATA_FCS_UNS`` keyword. Supported: numbers, strings, booleans, ``None``, lists,
@@ -76,6 +81,9 @@ AnnData to FCS
        subset of the events, e.g. events exported from a gate.
 
 ``obs`` and ``var`` columns may be numeric, boolean, string or categorical (including nullable pandas dtypes).
+
+Only one of ``X`` and ``raw`` is written. If they hold different event data (e.g. preprocessed or transformed ``X``,
+or a subset of channels), a :class:`anndata_fcs.FCSConversionWarning` is emitted for the one that is not written.
 
 .. warning::
 

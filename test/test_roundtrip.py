@@ -92,15 +92,21 @@ def test_fcs_roundtrip_int(int_fdata: flowio.FlowData) -> None:
     assert fdata.text["timestep"] == "0.01"
 
 
-def test_fcs_roundtrip_preprocessed(int_fdata: flowio.FlowData) -> None:
+@pytest.mark.parametrize("use_raw", [None, False])
+def test_fcs_roundtrip_preprocessed(int_fdata: flowio.FlowData, use_raw: bool | None) -> None:
     adata = fcs_to_anndata(int_fdata, preprocess=True)
     del adata.uns["fcs"]["analysis"]
 
-    # Preprocessed values (log scale, gain) are float64 and not exactly representable as float32
-    with _expect_conversion_warnings("32-bit float"):
-        fdata = _write_read(adata, index_channel=None)
+    # By default raw is written and preprocessed X is dropped. Log scaled channels are linearised (not exact in
+    # float32) and preprocessed values are float64 and not exactly representable as float32.
+    dropped = "X differs from raw" if use_raw is None else "raw differs from X"
+    with _expect_conversion_warnings("32-bit float", dropped):
+        fdata = _write_read(adata, index_channel=None, use_raw=use_raw)
 
     np.testing.assert_allclose(fdata.as_array(preprocess=True), int_fdata.as_array(preprocess=True), rtol=1e-6)
+
+    restored = fcs_to_anndata(fdata, preprocess=True)
+    np.testing.assert_allclose(restored.X, adata.X, rtol=1e-6)
 
 
 @pytest.mark.parametrize("index_channel", ["barcode_rank", None])

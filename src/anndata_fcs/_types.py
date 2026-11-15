@@ -11,7 +11,7 @@ class FCSMetadata(TypedDict):
     """FCS version of the source file (e.g. ``"3.1"``)."""
 
     preprocessed: bool
-    """Whether gain, log and time scaling were applied to ``X`` when reading."""
+    """Whether gain, log and time scaling were applied to ``X`` when reading. ``raw`` is never preprocessed."""
 
     text: dict[str, str]
     """Global TEXT keywords (lower case, without ``$``), excluding structural and per-channel keywords."""

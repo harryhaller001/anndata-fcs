@@ -61,7 +61,7 @@ _DEFAULT_PNR = 262144
 def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool = False) -> AnnData:
     """Convert a :class:`flowio.FlowData` instance to an AnnData object.
 
-    All metadata of the FCS file is kept:
+    The unprocessed event data of the file is stored in ``raw`` and ``X``. All metadata of the FCS file is kept:
 
     * Channel names (``$PnN``) become ``var_names``.
     * Per-channel keywords become ``var`` columns named ``pn<suffix>`` (e.g. ``$PnS`` -> ``pns``, ``$PnV`` ->
@@ -70,13 +70,14 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool = False) -> AnnDa
     * Keywords describing the binary layout (offsets, ``$DATATYPE``, ``$PnB``, ...) are stored in
       ``uns["fcs"]["source"]`` for reference. They are regenerated when writing.
     * If the file was written by :func:`anndata_to_fcs`, ``obs``, ``obs_names``, additional ``var`` columns and
-      ``uns`` are restored and the synthetic event index channel is removed from ``X``.
+      ``uns`` are restored and the synthetic event index channel is removed from the event data.
 
     Args:
         fdata: FlowData instance to convert.
-        preprocess: If ``True``, apply gain (``$PnG``), log (``$PnE``) and time (``$TIMESTEP``) scaling to the event
-            data. The ``pne``/``png``/``pnr`` columns and the ``timestep`` keyword are updated, so the metadata keeps
-            describing ``X`` correctly. If ``False`` (default), ``X`` holds the event data as stored in the file.
+        preprocess: If ``True``, apply gain (``$PnG``), log (``$PnE``) and time (``$TIMESTEP``) scaling to ``X``.
+            Only ``X`` is modified: ``raw`` keeps the event data as stored in the file and ``var``/``uns`` keep the
+            keywords of the file, so they describe ``raw``. ``uns["fcs"]["preprocessed"]`` records whether ``X`` was
+            preprocessed. If ``False`` (default), ``X`` holds the event data as stored in the file.
 
     Returns:
         AnnData: AnnData object with events as observations and channels as variables.
@@ -90,17 +91,8 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool = False) -> AnnDa
     n_channels = int(fdata.channel_count)
     split = split_text(fdata.text, n_channels)
 
-    if preprocess:
-        # Log scaled channels hold linear scale values after preprocessing, so $PnR is the upper bound of the scale
-        # (same as when writing log scaled channels, see _linearize_log_channels).
-        for channel in split.channels.values():
-            if "e" in channel and "r" in channel:
-                decades, log0 = parse_pne(channel["e"])
-                if decades != 0:
-                    channel["r"] = linear_range(decades, log0)
-        X = np.asarray(fdata.as_array(preprocess=True))
-    else:
-        X = np.array(fdata.events).reshape(-1, n_channels)
+    raw_X = np.array(fdata.events).reshape(-1, n_channels)
+    X = np.asarray(fdata.as_array(preprocess=True)) if preprocess else raw_X.copy()
 
     # Channel metadata
     channel_names = [str(label) for label in fdata.pnn_labels]
@@ -110,29 +102,25 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool = False) -> AnnDa
     source: dict[str, Any] = dict(split.structural)
     source["pnb"] = [split.channels[i].get("b", "") for i in range(1, n_channels + 1)]
 
-    global_keywords = dict(split.global_)
-    if preprocess:
-        var[escape_key(VAR_PREFIX + "e")] = pd.Series(["0,0"] * n_channels, index=var.index, dtype="string")
-        var[escape_key(VAR_PREFIX + "g")] = pd.Series(["1.0"] * n_channels, index=var.index, dtype="string")
-        if fdata.time_index is not None and "timestep" in global_keywords:
-            source["timestep"] = global_keywords.pop("timestep")
-
     uns_fcs: FCSMetadata = {
         "schema_version": SCHEMA_VERSION,
         "version": str(fdata.version),
         "preprocessed": preprocess,
-        "text": {escape_key(key): value for key, value in global_keywords.items()},
+        "text": {escape_key(key): value for key, value in split.global_.items()},
         "analysis": {escape_key(key): value for key, value in dict(fdata.analysis or {}).items()},
         "source": source,
     }
     if fdata.name is not None:
         uns_fcs["filename"] = str(fdata.name)
 
-    obs = pd.DataFrame(index=pd.Index([str(i) for i in range(X.shape[0])], dtype=object))
+    obs = pd.DataFrame(index=pd.Index([str(i) for i in range(raw_X.shape[0])], dtype=object))
     uns: dict[str, Any] = {}
 
     if KW_SCHEMA in split.payload:
-        X, var, obs, uns = _decode_payload(split.payload, X, var, obs, source)
+        index_position, var, obs, uns = _decode_payload(split.payload, raw_X, var, obs, source)
+        if index_position is not None:
+            raw_X = np.delete(raw_X, index_position, axis=1)
+            X = np.delete(X, index_position, axis=1)
 
     uns[UNS_KEY] = uns_fcs
 
@@ -144,7 +132,7 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool = False) -> AnnDa
         )
         var.index = make_index_unique(var.index)
 
-    return AnnData(X=X, obs=obs, var=var, uns=uns)
+    return AnnData(X=X, obs=obs, var=var, uns=uns, raw={"X": raw_X, "var": var.copy()})
 
 
 def _channels_to_var(channels: Mapping[int, Mapping[str, str]], n_channels: int) -> pd.DataFrame:
@@ -167,12 +155,17 @@ def _channels_to_var(channels: Mapping[int, Mapping[str, str]], n_channels: int)
 
 def _decode_payload(
     payload: Mapping[str, str],
-    X: np.ndarray,
+    events: np.ndarray,
     var: pd.DataFrame,
     obs: pd.DataFrame,
     source: dict[str, Any],
-) -> tuple[np.ndarray, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    """Restore AnnData specific information written by :func:`anndata_to_fcs`."""
+) -> tuple[int | None, pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Restore AnnData specific information written by :func:`anndata_to_fcs`.
+
+    Returns:
+        Position of the synthetic event index channel (to be removed from the event data, ``None`` if absent), ``var``
+        without the index channel, ``obs`` and ``uns``.
+    """
     schema_version = int(payload[KW_SCHEMA])
     if schema_version > SCHEMA_VERSION:
         warnings.warn(
@@ -184,11 +177,11 @@ def _decode_payload(
 
     # Remove synthetic event index channel
     event_index: np.ndarray | None = None
+    position: int | None = None
     index_channel = payload.get(KW_INDEX_CHANNEL)
     if index_channel is not None and index_channel in var.index:
         position = int(var.index.get_loc(index_channel))  # ty: ignore[invalid-argument-type]
-        event_index = X[:, position].astype(np.int64)
-        X = np.delete(X, position, axis=1)
+        event_index = events[:, position].astype(np.int64)
         var = var.drop(index=index_channel)
         source["pnb"] = [value for i, value in enumerate(source["pnb"]) if i != position]
 
@@ -201,7 +194,7 @@ def _decode_payload(
 
         if event_index is not None:
             obs = full_obs.iloc[event_index]
-        elif len(full_obs) == X.shape[0]:
+        elif len(full_obs) == events.shape[0]:
             obs = full_obs
         else:
             warnings.warn(
@@ -218,7 +211,7 @@ def _decode_payload(
 
     uns: dict[str, Any] = from_jsonable(loads(payload[KW_UNS])) if KW_UNS in payload else {}
 
-    return X, var, obs, uns
+    return position, var, obs, uns
 
 
 # =====================================================================================================================
@@ -233,22 +226,27 @@ def anndata_to_fcs(
     index_channel: str | None = DEFAULT_INDEX_CHANNEL,
     store_obs: bool = True,
     strict: bool = False,
+    use_raw: bool | None = None,
 ) -> flowio.FlowData:
     """Convert an AnnData object to a :class:`flowio.FlowData` instance.
 
-    The FCS file holds the following information:
+    By default the unprocessed event data in ``raw`` is written (see ``use_raw``). The FCS file holds the following
+    information:
 
-    * ``X`` as event data (32-bit float, the only data type supported by FlowIO) with ``var_names`` as ``$PnN``.
-    * ``var`` columns named ``pn<suffix>`` as per-channel keywords (e.g. ``pns`` -> ``$PnS``).
+    * ``raw.X`` or ``X`` as event data (32-bit float, the only data type supported by FlowIO) with ``raw.var_names`` or
+      ``var_names`` as ``$PnN``.
+    * ``raw.var`` or ``var`` columns named ``pn<suffix>`` as per-channel keywords (e.g. ``pns`` -> ``$PnS``). If ``X``
+      is written and was preprocessed (``uns["fcs"]["preprocessed"]``), ``$PnE``, ``$PnG``, ``$PnR`` and
+      ``$TIMESTEP`` are adjusted to describe the preprocessed values.
     * ``uns["fcs"]["text"]`` as global keywords. ``$SPILLOVER`` is restricted to the written channels.
       ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time, since the file is a
       derived copy of the data.
     * ``obs`` (including ``obs_names``), all other ``var`` columns and JSON serialisable ``uns`` entries as JSON encoded
       keywords in the ``ANNDATA_FCS_*`` namespace, which are restored by :func:`fcs_to_anndata`.
 
-    Information that cannot be stored (``layers``, ``obsm``, ``obsp``, ``varm``, ``varp``, ``raw``, unsupported
-    column dtypes, non serialisable ``uns`` entries, float precision beyond float32) triggers a
-    :class:`FCSConversionWarning`, or a :class:`ValueError` if ``strict=True``.
+    Information that cannot be stored (``layers``, ``obsm``, ``obsp``, ``varm``, ``varp``, ``X`` or ``raw`` if it
+    differs from the written event data, unsupported column dtypes, non serialisable ``uns`` entries, float precision
+    beyond float32) triggers a :class:`FCSConversionWarning`, or a :class:`ValueError` if ``strict=True``.
 
     Note:
         To write the result to disk, use :func:`anndata_fcs.write_fcs`. :meth:`flowio.FlowData.write_fcs` only keeps
@@ -261,14 +259,17 @@ def anndata_to_fcs(
             events of exported gates back to observations. Use ``None`` to omit it.
         store_obs: If ``True``, store ``obs`` and ``obs_names`` in the FCS file.
         strict: If ``True``, raise an error instead of warning when information would be lost.
+        use_raw: Write the unprocessed event data in ``raw`` (``True``) or ``X`` (``False``). Defaults to ``raw`` if
+            present, otherwise ``X``.
 
     Returns:
         flowio.FlowData: FlowData instance.
 
     Raises:
-        KeyError: If ``pns_key`` is not a column of ``var``.
-        TypeError: If ``X`` is not numeric.
-        ValueError: If channel names are invalid, or information would be lost and ``strict=True``.
+        KeyError: If ``pns_key`` is not a column of ``var`` (``raw.var``).
+        TypeError: If the event data is not numeric.
+        ValueError: If channel names are invalid, ``use_raw=True`` without ``raw``, or information would be lost and
+            ``strict=True``.
     """
     fcs_bytes = _anndata_to_fcs_bytes(
         adata,
@@ -276,6 +277,7 @@ def anndata_to_fcs(
         index_channel=index_channel,
         store_obs=store_obs,
         strict=strict,
+        use_raw=use_raw,
     )
     return flowio.FlowData(io.BytesIO(fcs_bytes))
 
@@ -287,6 +289,7 @@ def _anndata_to_fcs_bytes(
     index_channel: str | None,
     store_obs: bool,
     strict: bool,
+    use_raw: bool | None,
 ) -> bytes:
     """Serialise an AnnData object to the bytes of an FCS file. See :func:`anndata_to_fcs`."""
 
@@ -295,15 +298,30 @@ def _anndata_to_fcs_bytes(
             raise ValueError(message)
         warnings.warn(message, FCSConversionWarning, stacklevel=4)
 
-    _check_unsupported_slots(adata, lossy)
-    obs = _as_dataframe(adata.obs, "obs")
-    var = _as_dataframe(adata.var, "var")
+    if use_raw is None:
+        use_raw = adata.raw is not None
+    if use_raw and adata.raw is None:
+        raise ValueError("AnnData object has no raw slot. Use 'use_raw=False' to write X.")
 
-    channel_names = [str(name) for name in adata.var_names]
-    if not adata.var_names.is_unique:
-        raise ValueError("var_names must be unique to be used as FCS channel names ($PnN).")
+    uns_fcs: Mapping[str, Any] = adata.uns.get(UNS_KEY, {})
+    if use_raw:
+        raw = adata.raw
+        events, var_names, var_name = raw.X, raw.var_names, "raw.var"
+        var = _as_dataframe(raw.var, var_name)
+        preprocessed = False
+    else:
+        events, var_names, var_name = adata.X, adata.var_names, "var"
+        var = _as_dataframe(adata.var, var_name)
+        preprocessed = bool(uns_fcs.get("preprocessed", False))
+
+    _check_unsupported_slots(adata, lossy, use_raw=use_raw)
+    obs = _as_dataframe(adata.obs, "obs")
+
+    channel_names = [str(name) for name in var_names]
+    if not var_names.is_unique:
+        raise ValueError(f"{var_name}_names must be unique to be used as FCS channel names ($PnN).")
     if any(name == "" for name in channel_names):
-        raise ValueError("var_names must not be empty strings.")
+        raise ValueError(f"{var_name}_names must not be empty strings.")
     with_comma = [name for name in channel_names + ([index_channel] if index_channel else []) if "," in name]
     if len(with_comma) > 0:
         lossy(
@@ -312,14 +330,14 @@ def _anndata_to_fcs_bytes(
         )
 
     if pns_key is not None and pns_key not in var.columns:
-        raise KeyError(f"Column '{pns_key}' not found in var.")
+        raise KeyError(f"Column '{pns_key}' not found in {var_name}.")
 
     keyword_columns = [str(c) for c in var.columns if _is_keyword_column(c)]
     extra_columns = [c for c in var.columns if not _is_keyword_column(c)]
 
     # Per-channel keywords
     channels: list[dict[str, str]] = []
-    for position in range(adata.n_vars):
+    for position in range(len(channel_names)):
         channel: dict[str, str] = {}
         for column in keyword_columns:
             value = var[column].iloc[position]
@@ -333,7 +351,9 @@ def _anndata_to_fcs_bytes(
         channels.append(channel)
 
     # Event data
-    X = _dense_matrix(adata.X)
+    X = _dense_matrix(events)
+    if preprocessed:
+        _describe_preprocessed(channels)
     X = _linearize_log_channels(X, channels)
 
     for position, channel in enumerate(channels):
@@ -354,14 +374,16 @@ def _anndata_to_fcs_bytes(
 
     X32 = X.astype(np.float32)
     if not np.array_equal(X32.astype(np.float64), X, equal_nan=True):
-        lossy("X cannot be represented exactly as 32-bit float, the only data type supported by FlowIO.")
+        lossy("Event data cannot be represented exactly as 32-bit float, the only data type supported by FlowIO.")
 
     # Global keywords
-    uns_fcs: Mapping[str, Any] = adata.uns.get(UNS_KEY, {})
     global_keywords = {
         normalize_keyword(unescape_key(str(key))): str(value) for key, value in dict(uns_fcs.get("text", {})).items()
     }
     global_keywords = {key: value for key, value in global_keywords.items() if not key.startswith(KEYWORD_PREFIX)}
+    if preprocessed and "timestep" in global_keywords and any(name.lower() == "time" for name in channel_names):
+        # The time channel was scaled by $TIMESTEP (same time channel detection as flowio)
+        global_keywords["timestep"] = "1"
 
     if "spillover" in global_keywords:
         spillover, messages = check_spillover(global_keywords["spillover"], channel_names)
@@ -384,6 +406,7 @@ def _anndata_to_fcs_bytes(
             adata,
             obs=obs,
             extra_var=var[extra_columns],
+            extra_var_name=var_name,
             index_channel=index_channel,
             store_obs=store_obs,
             lossy=lossy,
@@ -436,7 +459,7 @@ def _is_missing(value: object) -> bool:
         return False
 
 
-def _check_unsupported_slots(adata: AnnData, lossy: Any) -> None:
+def _check_unsupported_slots(adata: AnnData, lossy: Any, *, use_raw: bool) -> None:
     dropped = [
         name
         for name, present in (
@@ -446,20 +469,56 @@ def _check_unsupported_slots(adata: AnnData, lossy: Any) -> None:
             ("obsp", len(adata.obsp) > 0),
             ("varm", len(adata.varm) > 0),
             ("varp", len(adata.varp) > 0),
-            ("raw", adata.raw is not None),
         )
         if present
     ]
     if len(dropped) > 0:
         lossy(f"{', '.join(dropped)} cannot be stored in FCS files and are dropped.")
 
+    # Only one of X and raw is written. The other one is lost, unless both hold the same event data.
+    if adata.raw is not None and adata.X is not None and not _same_events(adata):
+        if use_raw:
+            lossy("X differs from raw and is not written. Use 'use_raw=False' to write X instead of raw.")
+        else:
+            lossy("raw differs from X and is not written. Use 'use_raw=True' to write raw instead of X.")
+
+
+def _same_events(adata: AnnData) -> bool:
+    """Whether ``X`` and ``raw.X`` hold the same event data."""
+    raw = adata.raw
+    if raw is None or list(raw.var_names) != list(adata.var_names):
+        return False
+    X, raw_X = _to_array(adata.X), _to_array(raw.X)
+    if X.shape != raw_X.shape or X.dtype.kind not in "biuf" or raw_X.dtype.kind not in "biuf":
+        return False
+    return bool(np.array_equal(X, raw_X, equal_nan=True))
+
+
+def _to_array(X: Any) -> np.ndarray:
+    return X.toarray() if sparse.issparse(X) else np.asarray(X)
+
+
+def _describe_preprocessed(channels: list[dict[str, str]]) -> None:
+    """Update per-channel keywords in place to describe event data preprocessed by :meth:`flowio.FlowData.as_array`.
+
+    Preprocessed values are on linear scale (``$PnE/0,0/``, ``$PnR`` is the upper bound of the linear scale) and
+    gain is removed (``$PnG/1.0/``).
+    """
+    for channel in channels:
+        if "e" in channel:
+            decades, log0 = parse_pne(channel["e"])
+            if decades != 0:
+                if "r" in channel:
+                    channel["r"] = linear_range(decades, log0)
+                channel["e"] = "0,0"
+        if "g" in channel:
+            channel["g"] = "1.0"
+
 
 def _dense_matrix(X: Any) -> np.ndarray:
     if X is None:
         raise TypeError("AnnData object has no X.")
-    if sparse.issparse(X):
-        X = X.toarray()
-    X = np.asarray(X)
+    X = _to_array(X)
     if X.dtype.kind not in "biuf":
         raise TypeError(f"X must be numeric, got dtype '{X.dtype}'.")
     return X.astype(np.float64)
@@ -498,6 +557,7 @@ def _encode_payload(
     *,
     obs: pd.DataFrame,
     extra_var: pd.DataFrame,
+    extra_var_name: str,
     index_channel: str | None,
     store_obs: bool,
     lossy: Any,
@@ -519,7 +579,7 @@ def _encode_payload(
     if len(extra_var.columns) > 0:
         var_frame, skipped = encode_frame(extra_var)
         if len(skipped) > 0:
-            lossy(f"var columns with unsupported dtypes are dropped: {', '.join(skipped)}")
+            lossy(f"{extra_var_name} columns with unsupported dtypes are dropped: {', '.join(skipped)}")
         if len(var_frame["columns"]) > 0:
             payload[KW_VAR] = dumps(var_frame)
 
