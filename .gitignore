@@ -1,4 +1,5 @@
 *.fcs
+!/test/data/*.fcs
 /data/*.h5ad
 *.h5
 *.pdf

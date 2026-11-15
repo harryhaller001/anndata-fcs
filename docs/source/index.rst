@@ -21,17 +21,26 @@ anndata-fcs
    :alt: PyPI - Python Version
 
 
-Converting CITESeq data to FCS file format. `anndata-fcs` implements function to convert from `AnnData` object to
-`FlowData` objects, `DataFrame` objects and vice versa. For loading and generation of FCS files `anndata-fcs` uses
-the implementation of the `flowio` package.
+Converting between FCS files and ``AnnData`` objects without losing metadata. Per-channel FCS keywords are stored as
+``var`` columns (``$PnS``, ``$PnR``, ...) and global keywords in ``uns["fcs"]``.
+For reading and writing FCS files, ``anndata-fcs`` uses the ``flowio`` package.
+
+.. code-block:: python
+
+    from anndata_fcs import read_fcs, write_fcs
+
+    adata = read_fcs("sample.fcs")
+    write_fcs(adata, "copy.fcs")
+
+See :ref:`data_model` for the layout.
 
 
 Get started
 -----------
 
-You can install ``anndata-fcs`` with ``pip``::
+You can install ``anndata-fcs`` with ``uv``::
 
-    pip install anndata-fcs
+    uv add anndata-fcs
 
 
 For more details, see :ref:`install`.
@@ -40,7 +49,7 @@ For more details, see :ref:`install`.
 Contact
 -------
 
-If you found a bug, please use the `Issue tracker <https://github.com/harryhaller001/citeseq_to_fcs/issues>`_.
+If you found a bug, please use the `Issue tracker <https://github.com/harryhaller001/anndata-fcs/issues>`_.
 
 
 
@@ -50,7 +59,9 @@ If you found a bug, please use the `Issue tracker <https://github.com/harryhalle
     :glob:
 
     install
+    data_model
     vignette
+    citeseq
 
 .. toctree::
     :caption: API Documentation

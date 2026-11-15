@@ -4,8 +4,8 @@ requires = [ "uv-build>=0.9.28,<0.10" ]
 
 [project]
 name = "anndata-fcs"
-version = "0.2.1"
-description = "Converting FCS files to AnnData objects."
+version = "0.3.0"
+description = "Converting between FCS files and AnnData objects with consistent metadata."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = { file = "LICENSE" }
 maintainers = [ { name = "harryhaller001", email = "harryhaller001@gmail.com" } ]
@@ -25,7 +25,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-dependencies = [ "anndata", "flowio", "matplotlib" ]
+dependencies = [ "anndata", "flowio>=1.4,<2", "numpy", "pandas" ]
 
 optional-dependencies.docs = [
     "ipython",
@@ -37,7 +37,6 @@ optional-dependencies.docs = [
 ]
 
 optional-dependencies.test = [
-    "flit",
     "ipykernel",
     "ipython",
     "ipywidgets",
@@ -52,22 +51,6 @@ optional-dependencies.test = [
 ]
 urls.Documentation = "https://harryhaller001.github.io/anndata-fcs/"
 urls.Source = "https://github.com/harryhaller001/anndata-fcs"
-
-[tool.flit.sdist]
-include = [ "src/anndata_fcs/", "test/" ]
-exclude = [
-    "docs",
-    "coverage",
-    ".vscode",
-    "data",
-    ".github",
-    ".git",
-    ".pre-commit-config.yaml",
-    ".python-version",
-    "requirements.txt",
-    "Makefile",
-    ".gitignore",
-]
 
 [tool.ruff]
 line-length = 120
@@ -91,12 +74,15 @@ ini_options.minversion = "7.0"
 ini_options.log_format = "%(asctime)s %(levelname)s %(message)s"
 ini_options.log_date_format = "%Y-%m-%d %H:%M:%S"
 ini_options.log_level = "INFO"
-ini_options.log_cli = true
 ini_options.python_files = "test_*.py"
 ini_options.testpaths = [ "test" ]
 ini_options.xfail_strict = true
+ini_options.filterwarnings = [
+    "error::anndata_fcs.FCSConversionWarning",
+    "ignore:The 'future.infer_string' option is deprecated:DeprecationWarning",
+]
 ini_options.addopts = [
-    "--import-mode=importlib",           # allow using test files with same name
+    "--import-mode=importlib",
     "--cov=src/anndata_fcs",
     "--cov-report=html:coverage_report",
     "--cov-report=term",

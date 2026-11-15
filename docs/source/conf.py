@@ -38,7 +38,6 @@ extensions = [
 intersphinx_mapping = dict(
     python=("https://docs.python.org/3", None),
     numpy=("https://numpy.org/doc/stable/", None),
-    matplotlib=("https://matplotlib.org/stable", None),
     pandas=("https://pandas.pydata.org/docs/", None),
     anndata=("https://anndata.readthedocs.io/en/latest/", None),
     flowio=("https://flowio.readthedocs.io/en/latest/", None),
