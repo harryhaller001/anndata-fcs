@@ -4,11 +4,13 @@ import pytest
 
 from anndata_fcs import FCSConversionWarning
 from anndata_fcs._keywords import (
+    assign_channels,
     build_metadata,
     check_spillover,
     escape_key,
     format_timestamp,
     parse_pne,
+    remove_channel,
     split_text,
     unescape_key,
 )
@@ -34,14 +36,45 @@ def test_split_text() -> None:
         "anndata_fcs_schema": "1",
         "cyt": "LSRII",
     }
+    text["p1b"] = "32"
+    text["p99b"] = "8"
     split = split_text(text, n_channels=10)
 
-    assert split.structural == {"begindata": "100", "tot": "5"}
-    assert split.channels[1] == {"n": "FSC-A", "s": "Forward"}
-    assert split.channels[10] == {"n": "CD4", "display": "LOG"}
-    assert split.channels[2] == {}
+    assert split.structural == {"begindata": "100", "tot": "5", "p1b": "32"}
     assert split.payload == {"anndata_fcs_schema": "1"}
-    assert split.global_ == {"p99n": "out of range", "plate name": "plate", "cyt": "LSRII"}
+    assert split.text == {
+        "p1n": "FSC-A",
+        "p1s": "Forward",
+        "p10n": "CD4",
+        "p10display": "LOG",
+        "p99n": "out of range",
+        "plate name": "plate",
+        "cyt": "LSRII",
+        "p99b": "8",
+    }
+
+
+def test_remove_channel() -> None:
+    keywords = {"p1n": "A", "p2n": "B", "p2s": "x", "p3n": "C", "p3r": "1", "p9n": "out of range", "cyt": "LSRII"}
+    assert remove_channel(keywords, 2, n_channels=3) == {
+        "p1n": "A",
+        "p2n": "C",
+        "p2r": "1",
+        "p9n": "out of range",
+        "cyt": "LSRII",
+    }
+
+
+def test_assign_channels() -> None:
+    keywords = {"p1n": "A", "p1s": "CD3", "p2n": "B", "p2r": "1024", "p3n": "C", "p9n": "out of range", "cyt": "LSRII"}
+
+    channels, global_keywords = assign_channels(keywords, ["B", "A", "D"], n_channels=3)
+    assert channels == [{"n": "B", "r": "1024"}, {"n": "A", "s": "CD3"}, {}]
+    assert global_keywords == {"p9n": "out of range", "cyt": "LSRII"}
+
+    channels, global_keywords = assign_channels(keywords, ["out of range"])
+    assert channels == [{"n": "out of range"}]
+    assert global_keywords == {"cyt": "LSRII"}
 
 
 def test_build_metadata() -> None:
@@ -76,7 +109,7 @@ def test_build_metadata_invalid_keyword() -> None:
 
 def test_build_metadata_channel_keyword_in_global_keywords() -> None:
     """$Pn keywords of channels beyond $PAR must not be attributed to channels of the written file."""
-    with pytest.warns(FCSConversionWarning, match="refers to channel 2"):
+    with pytest.warns(FCSConversionWarning, match="'p2foo' refers to channel 2"):
         metadata, _ = build_metadata([{"r": "1"}, {"r": "1"}], {"p2foo": "x", "p3foo": "y"})
     assert metadata == {"p1r": "1", "p2r": "1", "p3foo": "y"}
 

@@ -22,11 +22,7 @@ def test_fcs_to_anndata_float(lsr_ii_fdata: flowio.FlowData) -> None:
     pd.testing.assert_frame_equal(adata.raw.var, adata.var)
 
     assert list(adata.var_names) == lsr_ii_fdata.pnn_labels
-    assert adata.var.loc["FSC-A", "pnr"] == "262144"
-    assert adata.var.loc["FSC-A", "pnv"] == "611"
-    assert adata.var.loc["FSC-A", "pndisplay"] == "LOG"
-    assert pd.isna(adata.var.loc["FSC-W", "pndisplay"])
-    assert "pnn" not in adata.var.columns and "pnb" not in adata.var.columns
+    assert len(adata.var.columns) == 0
 
     meta = adata.uns["fcs"]
     assert meta["version"] == "3.0"
@@ -34,8 +30,14 @@ def test_fcs_to_anndata_float(lsr_ii_fdata: flowio.FlowData) -> None:
     assert meta["text"]["cyt"] == "LSRII"
     assert meta["text"]["spill"].startswith("4,FITC-A")
     assert meta["text"]["tube name"] == "D6"
+    # Per-channel keywords keep the names parsed by FlowIO
+    assert meta["text"]["p1n"] == "FSC-A"
+    assert meta["text"]["p1r"] == "262144"
+    assert meta["text"]["p1v"] == "611"
+    assert meta["text"]["p1display"] == "LOG"
     assert not STRUCTURAL_KEYWORDS & set(meta["text"])
-    assert not any(key.startswith("p1") for key in meta["text"])
+    assert "p1b" not in meta["text"]
+    assert meta["source"]["p1b"] == "32"
     assert meta["source"]["datatype"] == "F"
     assert meta["source"]["tot"] == str(lsr_ii_fdata.event_count)
     assert meta["filename"] == "HTS_BD_LSR_II_Mixed_Specimen_001_D6_D06.fcs"
@@ -46,12 +48,12 @@ def test_fcs_to_anndata_int(int_fdata: flowio.FlowData) -> None:
 
     assert adata.X.dtype == np.uint16
     np.testing.assert_array_equal(adata.X, int_fdata.as_array(preprocess=False))
-    assert adata.var.loc["FL1-H", "pns"] == "CD4 FITC"
-    assert adata.var.loc["FL2-H", "pns"] == "CD8/PE"
-    assert adata.var.loc["FL1-H", "pne"] == "4,1"
+    assert adata.uns["fcs"]["text"]["p2s"] == "CD4 FITC"
+    assert adata.uns["fcs"]["text"]["p3s"] == "CD8/PE"
+    assert adata.uns["fcs"]["text"]["p2e"] == "4,1"
     assert adata.uns["fcs"]["analysis"] == {"gate1": "lymphocytes"}
     assert adata.uns["fcs"]["source"]["datatype"] == "I"
-    assert adata.uns["fcs"]["source"]["pnb"] == ["16"] * 4
+    assert [adata.uns["fcs"]["source"][f"p{n}b"] for n in range(1, 5)] == ["16"] * 4
     # Keywords containing '/' are escaped, so the object can be written to h5ad
     assert adata.uns["fcs"]["text"]["custom%2Fkey"] == "custom value"
 
@@ -126,9 +128,9 @@ def test_anndata_to_fcs_pns(adata: AnnData) -> None:
     fdata = anndata_to_fcs(adata, pns_key="gene_ids", index_channel=None)
     assert fdata.pns_labels == list(adata.var["gene_ids"])
 
-    adata.var["pns"] = "label"
+    adata.uns["fcs"] = {"text": {"p1n": adata.var_names[0], "p1s": "label"}}
     fdata = anndata_to_fcs(adata, index_channel=None)
-    assert fdata.pns_labels == ["label"] * adata.n_vars
+    assert fdata.pns_labels == ["label"] + [""] * (adata.n_vars - 1)
 
     with pytest.raises(KeyError):
         anndata_to_fcs(adata, pns_key="missing")
@@ -175,7 +177,7 @@ def test_anndata_to_fcs_unsupported_metadata(adata: AnnData) -> None:
 def test_anndata_to_fcs_analysis(int_fdata: flowio.FlowData) -> None:
     adata = fcs_to_anndata(int_fdata)
     # Linear scale keeps the integer data exact in float32, so only the ANALYSIS segment is lost
-    adata.raw.var["pne"] = "0,0"
+    adata.uns["fcs"]["text"]["p2e"] = "0,0"
 
     with pytest.warns(FCSConversionWarning, match="ANALYSIS"):
         anndata_to_fcs(adata)
@@ -205,7 +207,7 @@ def test_anndata_to_fcs_store_obs(adata_annotated: AnnData) -> None:
 def test_anndata_to_fcs_originality(int_fdata: flowio.FlowData) -> None:
     """Written files are derived copies, which FCS 3.1 marks with $ORIGINALITY and $LAST_MODIFIED."""
     adata = fcs_to_anndata(int_fdata)
-    adata.raw.var["pne"] = "0,0"
+    adata.uns["fcs"]["text"]["p2e"] = "0,0"
     del adata.uns["fcs"]["analysis"]
     adata.uns["fcs"]["text"]["originality"] = "Original"
     adata.uns["fcs"]["text"]["last_modified"] = "01-JAN-2000 00:00:00.00"
@@ -246,16 +248,42 @@ def test_anndata_to_fcs_comma_in_channel_name() -> None:
         anndata_to_fcs(adata, strict=True)
 
 
-def test_anndata_to_fcs_keyword_column_with_digit() -> None:
-    """Columns like 'pn1x' would be written as $P<n>1X and read back as a keyword of another channel."""
-    adata = AnnData(np.zeros((2, 2), dtype=np.float32))
-    adata.var["pn1x"] = ["a", "b"]
+def test_anndata_to_fcs_channel_keywords_follow_channels(int_fdata: flowio.FlowData) -> None:
+    """Per-channel keywords are assigned to the written channels by $PnN, so subsetting and reordering keeps them."""
+    adata = fcs_to_anndata(int_fdata)
+    adata.uns["fcs"]["text"]["p2e"] = "0,0"
+    del adata.uns["fcs"]["analysis"]
+    subset = adata[:, ["FL2-H", "FL1-H"]].copy()
+    subset.raw = None
 
+    fdata = anndata_to_fcs(subset, index_channel=None)
+    assert fdata.pnn_labels == ["FL2-H", "FL1-H"]
+    assert fdata.pns_labels == ["CD8/PE", "CD4 FITC"]
+    assert fdata.text["p1g"] == "2.0"
+    assert fdata.text["p2v"] == "650"
+    assert "p3n" not in fdata.text and "p4g" not in fdata.text
+
+
+def test_anndata_to_fcs_unassigned_channel_keyword() -> None:
+    """Per-channel keywords without a matching $PnN would be attributed to another channel and are not written."""
+    adata = AnnData(np.zeros((2, 2), dtype=np.float32))
+    adata.var_names = ["A", "B"]
+    adata.uns["fcs"] = {"text": {"p1n": "A", "p1s": "CD3", "p2n": "C", "p2s": "CD4", "p3s": "orphan"}}
+
+    with pytest.warns(FCSConversionWarning, match="'p3s' refers to channel 3"):
+        fdata = anndata_to_fcs(adata)
+    assert fdata.pns_labels == ["CD3", "", ""]
+    assert "p3s" not in fdata.text
+
+
+def test_anndata_to_fcs_var_columns(adata: AnnData) -> None:
+    """var columns are stored as payload, also if they look like keywords."""
+    adata.var["pns"] = "label"
     fdata = anndata_to_fcs(adata, index_channel=None)
-    assert not any(key.endswith("1x") for key in fdata.text)
+    assert not any(fdata.pns_labels)
 
     restored = fcs_to_anndata(fdata)
-    assert list(restored.var["pn1x"]) == ["a", "b"]
+    assert list(restored.var["pns"]) == ["label"] * adata.n_vars
 
 
 def test_anndata_to_fcs_use_raw(lsr_ii_fdata: flowio.FlowData) -> None:
@@ -286,8 +314,7 @@ def test_anndata_to_fcs_use_raw(lsr_ii_fdata: flowio.FlowData) -> None:
 def test_anndata_to_fcs_use_raw_same_events(int_fdata: flowio.FlowData) -> None:
     """No warning about dropping X or raw if both hold the same event data."""
     adata = fcs_to_anndata(int_fdata)
-    adata.var["pne"] = "0,0"
-    adata.raw.var["pne"] = "0,0"
+    adata.uns["fcs"]["text"]["p2e"] = "0,0"
     del adata.uns["fcs"]["analysis"]
 
     for use_raw in (True, False):
@@ -313,5 +340,5 @@ def test_anndata_to_fcs_preprocessed_x(int_fdata: flowio.FlowData) -> None:
     assert fdata.text["p3g"] == "1.0"
     assert fdata.text["timestep"] == "1"
     # The source object is not modified
-    assert adata.var.loc["FL1-H", "pne"] == "4,1"
+    assert adata.uns["fcs"]["text"]["p2e"] == "4,1"
     assert adata.uns["fcs"]["text"]["timestep"] == "0.01"

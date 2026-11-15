@@ -51,7 +51,8 @@ def write_fcs(
     Args:
         adata: AnnData object to write. It is not modified.
         file: Path or binary file handle.
-        pns_key: Column of ``var`` (``raw.var``) used for ``$PnS``. Defaults to the ``pns`` column, if present.
+        pns_key: Column of ``var`` (``raw.var``) used for ``$PnS``. Defaults to ``None``, which keeps the ``p<n>s``
+            keywords of ``uns["fcs"]["text"]``.
         index_channel: Name of the synthetic event index channel. Use ``None`` to omit it.
         store_obs: If ``True``, store ``obs`` and ``obs_names``.
         strict: If ``True``, raise an error instead of warning when information would be lost.

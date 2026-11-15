@@ -14,13 +14,15 @@ class FCSMetadata(TypedDict):
     """Whether gain, log and time scaling were applied to ``X`` when reading. ``raw`` is never preprocessed."""
 
     text: dict[str, str]
-    """Global TEXT keywords (lower case, without ``$``), excluding structural and per-channel keywords."""
+    """TEXT keywords as parsed by FlowIO (lower case, without ``$``), including per-channel keywords (``p1n``,
+    ``p1s``, ...). Structural keywords are stored in ``source``."""
 
     analysis: dict[str, str]
     """Keywords of the ANALYSIS segment. Not written back, since FlowIO cannot write ANALYSIS segments."""
 
-    source: dict[str, object]
-    """Structural keywords of the source file. Informational only, never written back."""
+    source: dict[str, str]
+    """Structural keywords of the source file (offsets, ``$DATATYPE``, ``$PnB``, ...). Informational only, never
+    written back."""
 
     filename: NotRequired[str]
     """Name of the source file, if known."""

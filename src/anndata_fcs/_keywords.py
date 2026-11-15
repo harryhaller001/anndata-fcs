@@ -16,6 +16,7 @@ from anndata_fcs._schema import (
     CHANNEL_KEYWORD_PATTERN,
     FCS_DELIMITER,
     KEYWORD_PREFIX,
+    STRUCTURAL_CHANNEL_SUFFIXES,
     STRUCTURAL_KEYWORDS,
 )
 
@@ -42,52 +43,124 @@ class SplitText:
     """TEXT segment split into its components."""
 
     structural: dict[str, str] = field(default_factory=dict)
-    """Keywords describing the binary layout (offsets, byte order, data type, ...)."""
+    """Keywords describing the binary layout (offsets, byte order, data type, ``$PnB``, ...)."""
 
-    channels: dict[int, dict[str, str]] = field(default_factory=dict)
-    """Per-channel keywords, keyed by channel number (1-based) and keyword suffix (``"n"``, ``"s"``, ...)."""
-
-    global_: dict[str, str] = field(default_factory=dict)
-    """All remaining keywords."""
+    text: dict[str, str] = field(default_factory=dict)
+    """All remaining keywords, including per-channel keywords (``p1n``, ``p1s``, ...)."""
 
     payload: dict[str, str] = field(default_factory=dict)
     """Keywords in the anndata-fcs namespace."""
 
 
+def parse_channel_keyword(key: str, n_channels: int | None = None) -> tuple[int, str] | None:
+    """Parse a per-channel keyword such as ``p12s`` into channel number and suffix (``(12, "s")``).
+
+    Args:
+        key: Keyword in the FlowIO convention (lower case, without ``$``).
+        n_channels: If given, only keywords of channels ``1 <= n <= n_channels`` are per-channel keywords.
+
+    Returns:
+        tuple[int, str] | None: Channel number (1-based) and suffix, or ``None`` if ``key`` is no per-channel keyword.
+    """
+    match = CHANNEL_KEYWORD_PATTERN.match(key)
+    if match is None:
+        return None
+    number = int(match.group(1))
+    if number < 1 or (n_channels is not None and number > n_channels):
+        return None
+    return number, match.group(2)
+
+
 def split_text(text: Mapping[str, str], n_channels: int) -> SplitText:
-    """Split parsed TEXT keywords into structural, per-channel, payload and global keywords.
+    """Split parsed TEXT keywords into structural, payload and all other keywords.
+
+    Keyword names are kept as parsed by FlowIO.
 
     Args:
         text: Keyword/value mapping as parsed by FlowIO (lower case keys without ``$``).
-        n_channels: Number of channels (``$PAR``). Keywords of the form ``p<n>...`` are only treated as channel
-            keywords when ``1 <= n <= n_channels``.
+        n_channels: Number of channels (``$PAR``). ``p<n>b`` is only treated as structural when
+            ``1 <= n <= n_channels``.
 
     Returns:
         SplitText: Classified keywords.
     """
-    result = SplitText(channels={i: {} for i in range(1, n_channels + 1)})
+    result = SplitText()
 
     for key, value in text.items():
         key = key.lower()
 
-        if key in STRUCTURAL_KEYWORDS:
+        channel = parse_channel_keyword(key, n_channels)
+        if key in STRUCTURAL_KEYWORDS or (channel is not None and channel[1] in STRUCTURAL_CHANNEL_SUFFIXES):
             result.structural[key] = value.strip()
-            continue
-
-        if key.startswith(KEYWORD_PREFIX):
+        elif key.startswith(KEYWORD_PREFIX):
             result.payload[key] = value
-            continue
-
-        match = CHANNEL_KEYWORD_PATTERN.match(key)
-        if match is not None:
-            channel_number = int(match.group(1))
-            if 1 <= channel_number <= n_channels:
-                result.channels[channel_number][match.group(2)] = value
-                continue
-
-        result.global_[key] = value
+        else:
+            result.text[key] = value
 
     return result
+
+
+def remove_channel(keywords: Mapping[str, str], number: int, n_channels: int) -> dict[str, str]:
+    """Remove the per-channel keywords of channel ``number`` and renumber the keywords of the following channels.
+
+    Args:
+        keywords: Keywords in the FlowIO convention.
+        number: Channel number (1-based) to remove.
+        n_channels: Number of channels before removal.
+
+    Returns:
+        dict[str, str]: Keywords without the removed channel.
+    """
+    result: dict[str, str] = {}
+    for key, value in keywords.items():
+        channel = parse_channel_keyword(key, n_channels)
+        if channel is None or channel[0] < number:
+            result[key] = value
+        elif channel[0] > number:
+            result[f"p{channel[0] - 1}{channel[1]}"] = value
+    return result
+
+
+def assign_channels(
+    keywords: Mapping[str, str],
+    channel_names: Sequence[str],
+    n_channels: int | None = None,
+) -> tuple[list[dict[str, str]], dict[str, str]]:
+    """Assign per-channel keywords to the channels of the written file by their name (``$PnN``).
+
+    Channels of ``keywords`` are identified by ``p<n>n``. Matching by name keeps the keywords with their channel when
+    channels are removed or reordered.
+
+    Args:
+        keywords: Keywords in the FlowIO convention, e.g. ``{"p1n": "FSC-A", "p1r": "262144", "cyt": "LSRII"}``.
+        channel_names: ``$PnN`` values of the written file, in channel order.
+        n_channels: Number of channels of ``keywords`` (``$PAR``). ``p<n>...`` with ``n > n_channels`` are global
+            keywords. If ``None``, every channel with a ``p<n>n`` keyword is considered.
+
+    Returns:
+        tuple[list[dict[str, str]], dict[str, str]]: Per-channel keyword suffix/value mappings in the order of
+        ``channel_names`` (empty if no channel matches) and the remaining global keywords. Keywords of channels not
+        in ``channel_names`` are dropped.
+    """
+    by_number: dict[int, dict[str, str]] = {}
+    for key in keywords:
+        channel = parse_channel_keyword(key, n_channels)
+        if channel is not None and channel[1] == "n":
+            by_number[channel[0]] = {}
+
+    numbers: dict[str, int] = {}
+    global_keywords: dict[str, str] = {}
+    for key, value in keywords.items():
+        channel = parse_channel_keyword(key, n_channels)
+        if channel is None or channel[0] not in by_number:
+            global_keywords[key] = value
+            continue
+        by_number[channel[0]][channel[1]] = value
+        if channel[1] == "n":
+            numbers[value] = min(numbers.get(value, channel[0]), channel[0])
+
+    channels = [dict(by_number[numbers[name]]) if name in numbers else {} for name in channel_names]
+    return channels, global_keywords
 
 
 def normalize_keyword(key: str) -> str:
@@ -180,13 +253,13 @@ def build_metadata(
         if key in STRUCTURAL_KEYWORDS:
             continue
 
-        match = CHANNEL_KEYWORD_PATTERN.match(key)
-        if match is not None and 1 <= int(match.group(1)) <= len(channels):
-            # Global keywords only hold $Pn keywords of channels beyond $PAR. Written as is, they would be attributed to
-            # a different channel.
+        channel = parse_channel_keyword(key, len(channels))
+        if channel is not None:
+            # Global keywords only hold $Pn keywords not assigned to a channel. Written as is, they would be attributed
+            # to a different channel.
             warnings.warn(
-                f"Global keyword '{key}' refers to channel {int(match.group(1))} of the written file. Per-channel "
-                f"keywords are taken from var columns ('pn{match.group(2)}'). It is not written.",
+                f"Global keyword '{key}' refers to channel {channel[0]} of the written file, but is not assigned to a "
+                f"channel by a matching '$P<n>N' keyword. It is not written.",
                 FCSConversionWarning,
                 stacklevel=3,
             )

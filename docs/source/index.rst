@@ -21,9 +21,8 @@ anndata-fcs
    :alt: PyPI - Python Version
 
 
-Converting between FCS files and ``AnnData`` objects without losing metadata. FCS keywords are mapped to ``var``
-and ``uns``, and ``obs``, ``var`` and ``uns`` of ``AnnData`` objects are embedded in FCS files, so both directions
-round trip. For reading and writing FCS files, ``anndata-fcs`` uses the ``flowio`` package.
+Converting between FCS files and ``AnnData`` objects without losing metadata. FCS keywords are stored in ``uns``.
+For reading and writing FCS files, ``anndata-fcs`` uses the ``flowio`` package.
 
 .. code-block:: python
 

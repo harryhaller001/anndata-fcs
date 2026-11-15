@@ -5,9 +5,8 @@ Layout produced by :func:`anndata_fcs.fcs_to_anndata`:
 * ``raw``: unprocessed event matrix (events x channels) and a copy of ``var``.
 * ``X``: event matrix (events x channels), unprocessed or preprocessed (``uns["fcs"]["preprocessed"]``).
 * ``var.index``: channel names (``$PnN``).
-* ``var`` columns ``pn<suffix>``: per-channel keywords (``$PnS`` -> ``pns``, ``$PnR`` -> ``pnr``, ...),
-  stored as raw strings.
-* ``uns["fcs"]``: file level metadata (see :class:`anndata_fcs._types.FCSMetadata`).
+* ``uns["fcs"]``: keywords and file level metadata (see :class:`anndata_fcs._types.FCSMetadata`). Keywords keep the
+  names parsed by FlowIO (lower case, without ``$``), including per-channel keywords such as ``p1s`` or ``p1r``.
 
 AnnData specific information (``obs``, ``obs_names``, extra ``var`` columns and ``uns``) is embedded into the FCS
 TEXT segment as JSON encoded keywords using the :data:`KEYWORD_PREFIX` namespace.
@@ -37,11 +36,8 @@ KW_UNS: str = KEYWORD_PREFIX + "uns"
 STRUCTURAL_KEYWORDS: frozenset[str] = frozenset(FCS_STANDARD_REQUIRED_KEYWORDS)
 """Global keywords describing the binary layout. They are regenerated on write and never copied."""
 
-VAR_PREFIX: str = "pn"
-"""Prefix of ``var`` columns holding per-channel FCS keywords."""
-
-STRUCTURAL_CHANNEL_SUFFIXES: frozenset[str] = frozenset({"n", "b"})
-"""Per-channel keyword suffixes not stored as ``var`` columns (``$PnN`` is the index, ``$PnB`` is regenerated)."""
+STRUCTURAL_CHANNEL_SUFFIXES: frozenset[str] = frozenset({"b"})
+"""Per-channel keyword suffixes describing the binary layout (``$PnB``). They are regenerated on write."""
 
 CHANNEL_KEYWORD_PATTERN: re.Pattern[str] = re.compile(r"^p(\d+)(\D.*)$")
 """Matches per-channel keywords such as ``p1n``, ``p12s`` or ``p3display``."""

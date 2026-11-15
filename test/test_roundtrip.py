@@ -114,6 +114,10 @@ def test_anndata_roundtrip(adata_annotated: AnnData, index_channel: str | None) 
     restored = fcs_to_anndata(anndata_to_fcs(adata_annotated, index_channel=index_channel))
 
     _assert_same_anndata(restored, adata_annotated)
+    # Keywords of the synthetic index channel are removed with the channel
+    assert "barcode_rank" not in restored.uns["fcs"]["text"].values()
+    assert f"p{adata_annotated.n_vars + 1}b" not in restored.uns["fcs"]["source"]
+    assert restored.uns["fcs"]["source"]["par"] == str(adata_annotated.n_vars)
     assert restored.uns["params"]["resolution"] == 0.5
     assert restored.uns["params"]["markers"] == ["CD3", "CD19"]
     np.testing.assert_array_equal(restored.uns["params"]["matrix"], np.eye(2))
