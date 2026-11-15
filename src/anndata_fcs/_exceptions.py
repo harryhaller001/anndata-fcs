@@ -12,8 +12,8 @@ class FCSConversionWarning(UserWarning):
 def warn(message: str) -> None:
     """Emit a :class:`FCSConversionWarning` attributed to the first caller outside of anndata-fcs.
 
-    Internal call depths differ between code paths (e.g. :func:`anndata_fcs.read_fcs` vs.
-    :func:`anndata_fcs.fcs_to_anndata`), so a fixed ``stacklevel`` would point into the package for some of them.
+    Internal call depths differ between code paths (e.g. slot checks vs. keyword checks), so a fixed ``stacklevel``
+    would point into the package for some of them.
     """
     stacklevel = 2
     frame = sys._getframe(1)

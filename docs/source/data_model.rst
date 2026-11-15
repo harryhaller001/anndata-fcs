@@ -13,7 +13,7 @@ each piece of information is stored.
 FCS to AnnData
 --------------
 
-:func:`anndata_fcs.read_fcs` and :func:`anndata_fcs.fcs_to_anndata` create the following layout:
+:func:`anndata_fcs.read_fcs` creates the following layout:
 
 .. list-table::
    :header-rows: 1
@@ -21,13 +21,12 @@ FCS to AnnData
 
    * - AnnData
      - FCS
-   * - ``raw``
-     - Unprocessed event data in the stored data type (``float32`` for ``$DATATYPE/F``, ``uint`` for ``I``) and a
-       copy of ``var``.
    * - ``X``
-     - Unprocessed event data, like ``raw.X``. With ``preprocess=True``, gain (``$PnG``), log (``$PnE``) and time
-       (``$TIMESTEP``) scaling is applied. Only ``X`` is modified: ``uns["fcs"]`` keeps the keywords of the file and
-       describes ``raw``.
+     - Event data as stored in the file, in the stored data type (``float32`` for ``$DATATYPE/F``, ``uint`` for
+       ``I``).
+   * - ``layers["preprocessed"]``
+     - Only with ``preprocess=True``: event data with gain (``$PnG``), log (``$PnE``) and time (``$TIMESTEP``)
+       scaling applied. ``X`` and ``uns["fcs"]`` are not modified.
    * - ``var_names``
      - Channel names (``$PnN``).
    * - ``uns["fcs"]["text"]``
@@ -36,11 +35,11 @@ FCS to AnnData
        ``p1s``, ``p1r``, ``p1display``.
    * - ``uns["fcs"]["analysis"]``
      - Keywords of the ANALYSIS segment.
-   * - ``uns["fcs"]["source"]``
-     - Keywords describing the binary layout (``$BEGINDATA``, ``$DATATYPE``, ``$BYTEORD``, ``$PnB``, ...). For
-       reference only, they are regenerated when writing.
-   * - ``uns["fcs"]["version"]``, ``["filename"]``, ``["preprocessed"]``, ``["schema_version"]``
-     - FCS version and file name of the source, whether ``X`` was preprocessed, and the version of this layout.
+   * - ``uns["fcs"]["version"]``, ``["filename"]``, ``["schema_version"]``
+     - FCS version and file name of the source, and the version of this layout.
+
+Keywords describing the binary layout (``$BEGINDATA``, ``$DATATYPE``, ``$BYTEORD``, ``$PnB``, ...) are not stored,
+since they are regenerated when writing.
 
 ``var`` has no columns for FCS files not written by ``anndata-fcs``. Use the per-channel keywords in
 ``uns["fcs"]["text"]`` to add columns, e.g. marker labels (``$PnS``):
@@ -57,7 +56,7 @@ allow ``/`` in keys.
 AnnData to FCS
 --------------
 
-:func:`anndata_fcs.write_fcs` and :func:`anndata_fcs.anndata_to_fcs` store:
+:func:`anndata_fcs.write_fcs` stores:
 
 .. list-table::
    :header-rows: 1
@@ -65,12 +64,10 @@ AnnData to FCS
 
    * - AnnData
      - FCS
-   * - ``raw.X`` (default) or ``X``
-     - Event data as 32-bit float, the only data type FlowIO can write. ``raw`` is written if present, use
-       ``use_raw=False`` to write ``X`` instead. Channels on log scale are converted to linear scale. If ``X`` is
-       written and was preprocessed (``uns["fcs"]["preprocessed"]``), ``$PnE``, ``$PnG``, ``$PnR`` and ``$TIMESTEP``
-       are adjusted to describe the preprocessed values.
-   * - ``raw.var_names`` (or ``var_names`` with ``use_raw=False``)
+   * - ``X``
+     - Event data as 32-bit float, the only data type FlowIO can write. Channels on log scale are converted to
+       linear scale.
+   * - ``var_names``
      - ``$PnN``.
    * - ``uns["fcs"]["text"]``
      - Keywords. Per-channel keywords (``p<n>s``, ``p<n>r``, ...) are assigned to the written channels by their
@@ -80,7 +77,7 @@ AnnData to FCS
        channels by ``$PnN``. ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time.
    * - ``obs``, ``obs_names``
      - JSON encoded in the ``ANNDATA_FCS_OBS`` keyword (``store_obs=True``).
-   * - ``var`` (``raw.var``) columns
+   * - ``var`` columns
      - JSON encoded in the ``ANNDATA_FCS_VAR`` keyword.
    * - Other ``uns`` entries
      - JSON encoded in the ``ANNDATA_FCS_UNS`` keyword. Supported: numbers, strings, booleans, ``None``, lists,
@@ -91,8 +88,21 @@ AnnData to FCS
 
 ``obs`` and ``var`` columns may be numeric, boolean, string or categorical (including nullable pandas dtypes).
 
-Only one of ``X`` and ``raw`` is written. If they hold different event data (e.g. preprocessed or transformed ``X``,
-or a subset of channels), a :class:`anndata_fcs.FCSConversionWarning` is emitted for the one that is not written.
+Only ``X`` is written. ``layers["preprocessed"]`` is not written, since it is computed from ``X`` and the keywords.
+``raw`` is not written either. For scanpy objects holding the counts in ``raw``, write ``adata.raw.to_adata()``.
+
+Any information that is lost when writing is reported by an :class:`anndata_fcs.FCSConversionWarning`. To raise an
+error instead, turn the warning into an exception:
+
+.. code-block:: python
+
+    import warnings
+
+    from anndata_fcs import FCSConversionWarning, write_fcs
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FCSConversionWarning)
+        write_fcs(adata, "out.fcs")
 
 .. warning::
 

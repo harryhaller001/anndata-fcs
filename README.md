@@ -70,7 +70,7 @@ make typing
 
 - `flowio>=1.4` (Documentation: https://flowio.readthedocs.io/en/latest)
 - `anndata` (Documentation: https://anndata.readthedocs.io/en/latest)
-- `numpy`, `pandas`, `scipy`
+- `numpy`, `pandas`
 
 
 ### License

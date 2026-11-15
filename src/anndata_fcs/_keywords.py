@@ -139,19 +139,16 @@ def unique_channel_names(names: Sequence[str]) -> list[str]:
 def assign_channels(
     keywords: Mapping[str, str],
     channel_names: Sequence[str],
-    n_channels: int | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, str]]:
     """Assign per-channel keywords to the channels of the written file by their name (``$PnN``).
 
-    Channels of ``keywords`` are identified by ``p<n>n``. Matching by name keeps the keywords with their channel when
+    Channels of ``keywords`` are identified by ``p<n>n``, every other ``p<n>...`` keyword is a global keyword. Matching by name keeps the keywords with their channel when
     channels are removed or reordered. Duplicate names are made unique with :func:`unique_channel_names` (in channel
     order), as done for ``var_names`` when reading, so each duplicate keeps its own keywords.
 
     Args:
         keywords: Keywords in the FlowIO convention, e.g. ``{"p1n": "FSC-A", "p1r": "262144", "cyt": "LSRII"}``.
         channel_names: ``$PnN`` values of the written file, in channel order.
-        n_channels: Number of channels of ``keywords`` (``$PAR``). ``p<n>...`` with ``n > n_channels`` are global
-            keywords. If ``None``, every channel with a ``p<n>n`` keyword is considered.
 
     Returns:
         tuple[list[dict[str, str]], dict[str, str]]: Per-channel keyword suffix/value mappings in the order of
@@ -160,13 +157,13 @@ def assign_channels(
     """
     by_number: dict[int, dict[str, str]] = {}
     for key in keywords:
-        channel = parse_channel_keyword(key, n_channels)
+        channel = parse_channel_keyword(key)
         if channel is not None and channel[1] == "n":
             by_number[channel[0]] = {}
 
     global_keywords: dict[str, str] = {}
     for key, value in keywords.items():
-        channel = parse_channel_keyword(key, n_channels)
+        channel = parse_channel_keyword(key)
         if channel is None or channel[0] not in by_number:
             global_keywords[key] = value
             continue

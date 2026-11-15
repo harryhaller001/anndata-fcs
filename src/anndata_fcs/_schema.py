@@ -1,9 +1,9 @@
 """Constants describing how FCS data is laid out in an AnnData object (schema v1).
 
-Layout produced by :func:`anndata_fcs.fcs_to_anndata`:
+Layout produced by :func:`anndata_fcs.read_fcs`:
 
-* ``raw``: unprocessed event matrix (events x channels) and a copy of ``var``.
-* ``X``: event matrix (events x channels), unprocessed or preprocessed (``uns["fcs"]["preprocessed"]``).
+* ``X``: event matrix (events x channels) as stored in the file.
+* ``layers["preprocessed"]``: optional, ``X`` with gain, log and time scaling applied. Not written to FCS files.
 * ``var.index``: channel names (``$PnN``).
 * ``uns["fcs"]``: keywords and file level metadata (see :class:`anndata_fcs._types.FCSMetadata`). Keywords keep the
   names parsed by FlowIO (lower case, without ``$``), including per-channel keywords such as ``p1s`` or ``p1r``.
@@ -20,6 +20,9 @@ SCHEMA_VERSION: int = 1
 
 UNS_KEY: str = "fcs"
 """Key in ``adata.uns`` holding FCS file level metadata."""
+
+PREPROCESSED_LAYER: str = "preprocessed"
+"""Layer holding the event data with gain, log and time scaling applied (``read_fcs(..., preprocess=True)``)."""
 
 DEFAULT_INDEX_CHANNEL: str = "barcode_rank"
 """Default name of the synthetic event index channel added when writing FCS files."""

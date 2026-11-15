@@ -11,8 +11,9 @@ import pandas as pd
 import pytest
 from anndata import AnnData, read_h5ad
 
-from anndata_fcs import FCSConversionWarning, anndata_to_fcs, fcs_to_anndata, read_fcs, write_fcs
+from anndata_fcs import FCSConversionWarning, read_fcs, write_fcs
 from anndata_fcs._schema import KEYWORD_PREFIX, STRUCTURAL_KEYWORDS
+from test.conftest import to_flowdata
 
 # Set on every write to mark the file as a modified copy (FCS 3.1)
 MODIFICATION_KEYWORDS = frozenset({"originality", "last_modified"})
@@ -48,13 +49,6 @@ def _expect_conversion_warnings(*patterns: str) -> Generator[None, None, None]:
         assert any(re.search(pattern, message) for pattern in patterns), f"Unexpected warning: {message}"
 
 
-def _write_read(adata: AnnData, **kwargs) -> flowio.FlowData:
-    handle = io.BytesIO()
-    write_fcs(adata, handle, **kwargs)
-    handle.seek(0)
-    return flowio.FlowData(handle)
-
-
 def _assert_same_anndata(restored: AnnData, original: AnnData) -> None:
     X = original.X.toarray() if hasattr(original.X, "toarray") else original.X
     np.testing.assert_array_equal(restored.X, X)
@@ -65,7 +59,7 @@ def _assert_same_anndata(restored: AnnData, original: AnnData) -> None:
 
 
 def test_fcs_roundtrip_float(lsr_ii_fdata: flowio.FlowData) -> None:
-    fdata = _write_read(fcs_to_anndata(lsr_ii_fdata), index_channel=None)
+    fdata = to_flowdata(read_fcs(lsr_ii_fdata), index_channel=None)
 
     np.testing.assert_array_equal(fdata.as_array(preprocess=False), lsr_ii_fdata.as_array(preprocess=False))
     assert fdata.pnn_labels == lsr_ii_fdata.pnn_labels
@@ -75,12 +69,12 @@ def test_fcs_roundtrip_float(lsr_ii_fdata: flowio.FlowData) -> None:
 
 
 def test_fcs_roundtrip_int(int_fdata: flowio.FlowData) -> None:
-    adata = fcs_to_anndata(int_fdata)
+    adata = read_fcs(int_fdata)
     del adata.uns["fcs"]["analysis"]
 
     # Log scaled channel cannot be represented exactly as float32 after linearisation
     with pytest.warns(FCSConversionWarning, match="32-bit float"):
-        fdata = _write_read(adata, index_channel=None)
+        fdata = to_flowdata(adata, index_channel=None)
 
     assert fdata.data_type == "F"
     np.testing.assert_allclose(fdata.as_array(preprocess=True), int_fdata.as_array(preprocess=True), rtol=1e-6)
@@ -92,40 +86,35 @@ def test_fcs_roundtrip_int(int_fdata: flowio.FlowData) -> None:
     assert fdata.text["timestep"] == "0.01"
 
 
-@pytest.mark.parametrize("use_raw", [None, False])
-def test_fcs_roundtrip_preprocessed(int_fdata: flowio.FlowData, use_raw: bool | None) -> None:
-    adata = fcs_to_anndata(int_fdata, preprocess=True)
+def test_fcs_roundtrip_preprocessed(int_fdata: flowio.FlowData) -> None:
+    adata = read_fcs(int_fdata, preprocess=True)
     del adata.uns["fcs"]["analysis"]
 
-    # By default raw is written and preprocessed X is dropped. Log scaled channels are linearised (not exact in
-    # float32) and preprocessed values are float64 and not exactly representable as float32.
-    dropped = "X differs from raw" if use_raw is None else "raw differs from X"
-    with _expect_conversion_warnings("32-bit float", dropped):
-        fdata = _write_read(adata, index_channel=None, use_raw=use_raw)
+    # X is written, the preprocessed layer is derived from it. The log scaled channel is linearised (not exact in
+    # float32).
+    with _expect_conversion_warnings("32-bit float"):
+        fdata = to_flowdata(adata, index_channel=None)
 
-    np.testing.assert_allclose(fdata.as_array(preprocess=True), int_fdata.as_array(preprocess=True), rtol=1e-6)
-
-    restored = fcs_to_anndata(fdata, preprocess=True)
-    np.testing.assert_allclose(restored.X, adata.X, rtol=1e-6)
+    restored = read_fcs(fdata, preprocess=True)
+    np.testing.assert_allclose(restored.layers["preprocessed"], adata.layers["preprocessed"], rtol=1e-6)
 
 
 @pytest.mark.parametrize("index_channel", ["barcode_rank", None])
 def test_anndata_roundtrip(adata_annotated: AnnData, index_channel: str | None) -> None:
-    restored = fcs_to_anndata(anndata_to_fcs(adata_annotated, index_channel=index_channel))
+    restored = read_fcs(to_flowdata(adata_annotated, index_channel=index_channel))
 
     _assert_same_anndata(restored, adata_annotated)
     # Keywords of the synthetic index channel are removed with the channel
     assert "barcode_rank" not in restored.uns["fcs"]["text"].values()
-    assert f"p{adata_annotated.n_vars + 1}b" not in restored.uns["fcs"]["source"]
-    assert restored.uns["fcs"]["source"]["par"] == str(adata_annotated.n_vars)
+    assert f"p{adata_annotated.n_vars + 1}n" not in restored.uns["fcs"]["text"]
     assert restored.uns["params"]["resolution"] == 0.5
     assert restored.uns["params"]["markers"] == ["CD3", "CD19"]
     np.testing.assert_array_equal(restored.uns["params"]["matrix"], np.eye(2))
 
 
 def test_anndata_roundtrip_twice(adata_annotated: AnnData) -> None:
-    once = fcs_to_anndata(anndata_to_fcs(adata_annotated))
-    twice = fcs_to_anndata(anndata_to_fcs(once))
+    once = read_fcs(to_flowdata(adata_annotated))
+    twice = read_fcs(to_flowdata(once))
 
     _assert_same_anndata(twice, once)
     assert _without_modification(twice.uns["fcs"]["text"]) == _without_modification(once.uns["fcs"]["text"])
@@ -140,7 +129,7 @@ def test_anndata_roundtrip_file(adata_annotated: AnnData, tmp_path: os.PathLike)
 
 def test_anndata_roundtrip_gated_subset(adata_annotated: AnnData) -> None:
     """Events exported from a gate are mapped back to their observations using the index channel."""
-    fdata = anndata_to_fcs(adata_annotated)
+    fdata = to_flowdata(adata_annotated)
     subset = np.array([5, 1, 999, 42])
 
     # Simulate an exported gate: same keywords, subset of events
@@ -156,7 +145,7 @@ def test_anndata_roundtrip_gated_subset(adata_annotated: AnnData) -> None:
     )
     handle.seek(0)
 
-    restored = fcs_to_anndata(flowio.FlowData(handle))
+    restored = read_fcs(flowio.FlowData(handle))
 
     assert list(restored.obs_names) == list(adata_annotated.obs_names[subset])
     pd.testing.assert_frame_equal(restored.obs, adata_annotated.obs.iloc[subset], check_index_type=False)
@@ -169,7 +158,7 @@ def test_anndata_roundtrip_gated_subset_default_obs() -> None:
     """Without stored obs, obs_names of exported gates are the positions of the events in the written object."""
     adata = AnnData(np.arange(20, dtype=np.float32).reshape(10, 2))
     adata.var_names = ["A", "B"]
-    fdata = anndata_to_fcs(adata)
+    fdata = to_flowdata(adata)
     assert not any(key.endswith("obs") for key in fdata.text if key.startswith(KEYWORD_PREFIX))
 
     subset = np.array([7, 2, 5])
@@ -180,7 +169,7 @@ def test_anndata_roundtrip_gated_subset_default_obs() -> None:
     )
     handle.seek(0)
 
-    restored = fcs_to_anndata(flowio.FlowData(handle))
+    restored = read_fcs(flowio.FlowData(handle))
     assert list(restored.obs_names) == ["7", "2", "5"]
     np.testing.assert_array_equal(restored.X, adata.X[subset])
 
@@ -200,7 +189,7 @@ def test_h5ad_roundtrip(
     tmp_path: os.PathLike,
 ) -> None:
     source: flowio.FlowData = request.getfixturevalue(fixture)
-    adata = fcs_to_anndata(source)
+    adata = read_fcs(source)
 
     path = os.path.join(tmp_path, "data.h5ad")
     adata.write_h5ad(path)
@@ -209,21 +198,21 @@ def test_h5ad_roundtrip(
     assert from_h5ad.uns["fcs"]["text"] == adata.uns["fcs"]["text"]
 
     with _expect_conversion_warnings(*expected_warnings):
-        direct = _write_read(adata, index_channel=None)
+        direct = to_flowdata(adata, index_channel=None)
     with _expect_conversion_warnings(*expected_warnings):
-        via_h5ad = _write_read(from_h5ad, index_channel=None)
+        via_h5ad = to_flowdata(from_h5ad, index_channel=None)
 
     np.testing.assert_array_equal(via_h5ad.as_array(preprocess=False), direct.as_array(preprocess=False))
     assert _without_modification(via_h5ad.text) == _without_modification(direct.text)
 
 
 def test_h5ad_roundtrip_anndata(adata_annotated: AnnData, tmp_path: os.PathLike) -> None:
-    restored = fcs_to_anndata(anndata_to_fcs(adata_annotated))
+    restored = read_fcs(to_flowdata(adata_annotated))
     path = os.path.join(tmp_path, "data.h5ad")
     restored.write_h5ad(path)
 
     from_h5ad = read_h5ad(path)
-    again = fcs_to_anndata(anndata_to_fcs(from_h5ad))
+    again = read_fcs(to_flowdata(from_h5ad))
 
     np.testing.assert_array_equal(again.X, restored.X)
     assert list(again.obs_names) == list(restored.obs_names)

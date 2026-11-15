@@ -8,6 +8,8 @@ import pandas as pd
 import pytest
 from anndata import AnnData, read_h5ad
 
+from anndata_fcs import write_fcs
+
 BASEDIR = os.path.dirname(__file__)
 TESTING_FILENAME = os.path.join(BASEDIR, "testing.h5ad")
 
@@ -139,3 +141,11 @@ def int_fcs_bytes() -> bytes:
 @pytest.fixture
 def int_fdata(int_fcs_bytes: bytes) -> flowio.FlowData:
     return flowio.FlowData(io.BytesIO(int_fcs_bytes))
+
+
+def to_flowdata(adata: AnnData, **options) -> flowio.FlowData:
+    """Write ``adata`` with :func:`anndata_fcs.write_fcs` and parse the result with FlowIO."""
+    handle = io.BytesIO()
+    write_fcs(adata, handle, **options)
+    handle.seek(0)
+    return flowio.FlowData(handle)

@@ -25,7 +25,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-dependencies = [ "anndata", "flowio>=1.4,<2", "numpy", "pandas", "scipy" ]
+dependencies = [ "anndata", "flowio>=1.4,<2", "numpy", "pandas" ]
 
 optional-dependencies.docs = [
     "ipython",

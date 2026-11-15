@@ -67,15 +67,12 @@ def test_remove_channel() -> None:
 
 
 def test_assign_channels() -> None:
-    keywords = {"p1n": "A", "p1s": "CD3", "p2n": "B", "p2r": "1024", "p3n": "C", "p9n": "out of range", "cyt": "LSRII"}
+    keywords = {"p1n": "A", "p1s": "CD3", "p2n": "B", "p2r": "1024", "p3n": "C", "p9s": "orphan", "cyt": "LSRII"}
 
-    channels, global_keywords = assign_channels(keywords, ["B", "A", "D"], n_channels=3)
+    channels, global_keywords = assign_channels(keywords, ["B", "A", "D"])
     assert channels == [{"n": "B", "r": "1024"}, {"n": "A", "s": "CD3"}, {}]
-    assert global_keywords == {"p9n": "out of range", "cyt": "LSRII"}
-
-    channels, global_keywords = assign_channels(keywords, ["out of range"])
-    assert channels == [{"n": "out of range"}]
-    assert global_keywords == {"cyt": "LSRII"}
+    # Keywords of channels without p<n>n are global keywords
+    assert global_keywords == {"p9s": "orphan", "cyt": "LSRII"}
 
 
 def test_assign_channels_duplicate_names() -> None:
@@ -84,7 +81,7 @@ def test_assign_channels_duplicate_names() -> None:
     names = unique_channel_names(["A", "A", "A-1"])
     assert len(set(names)) == 3 and names[0] == "A"
 
-    channels, _ = assign_channels(keywords, list(reversed(names)), n_channels=3)
+    channels, _ = assign_channels(keywords, list(reversed(names)))
     assert [channel["s"] for channel in channels] == ["CD8", "CD4", "CD3"]
 
 
