@@ -60,6 +60,7 @@ If you found a bug, please use the `Issue tracker <https://github.com/harryhalle
     install
     data_model
     vignette
+    citeseq
 
 .. toctree::
     :caption: API Documentation
