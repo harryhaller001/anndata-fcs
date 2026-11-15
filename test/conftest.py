@@ -32,13 +32,12 @@ def adata(_adata: AnnData) -> AnnData:
 
 @pytest.fixture
 def adata_annotated(adata: AnnData) -> AnnData:
-    """CITE-seq data with obs columns of several dtypes and uns entries."""
+    """CITE-seq data with obs columns of several dtypes."""
     rng = np.random.default_rng(0)
     adata.obs["cluster"] = pd.Categorical(rng.choice(["T/NK", "B$", "Mono"], adata.n_obs))
     adata.obs["score"] = rng.random(adata.n_obs)
     adata.obs["n_counts"] = np.asarray(adata.X.sum(axis=1)).ravel().astype(np.int64)
     adata.obs["is_doublet"] = rng.random(adata.n_obs) > 0.9
-    adata.uns["params"] = {"resolution": 0.5, "markers": ["CD3", "CD19"], "matrix": np.eye(2)}
     return adata
 
 

@@ -11,8 +11,6 @@ from anndata_fcs._payload import (
     dumps,
     encode_frame,
     encode_series,
-    from_jsonable,
-    to_jsonable,
 )
 
 
@@ -74,35 +72,3 @@ def test_frame_roundtrip() -> None:
 
     restored = decode_frame(json.loads(dumps(encoded)))
     pd.testing.assert_frame_equal(restored, frame[["a", "b"]])
-
-
-def test_jsonable_roundtrip() -> None:
-    obj = {
-        "int": 1,
-        "float": 0.1,
-        "str": "a/b",
-        "none": None,
-        "list": [1, "a", [True]],
-        "scalar": np.float32(0.5),
-        "array": np.arange(6, dtype=np.int16).reshape(2, 3),
-        "empty": np.zeros((0, 3)),
-        "strings": np.array(["a", "bc"]),
-        "objects": np.array(["a", "b"], dtype=object),
-        "nested": {"x": np.array([1.0, np.nan])},
-    }
-    restored = from_jsonable(json.loads(dumps(to_jsonable(obj))))
-
-    assert restored["int"] == 1 and restored["float"] == 0.1 and restored["str"] == "a/b"
-    assert restored["none"] is None
-    assert restored["list"] == [1, "a", [True]]
-    assert restored["scalar"] == 0.5
-    for key in ("array", "empty", "strings", "objects"):
-        assert restored[key].dtype == obj[key].dtype
-        np.testing.assert_array_equal(restored[key], obj[key])
-    np.testing.assert_array_equal(restored["nested"]["x"], obj["nested"]["x"])
-
-
-@pytest.mark.parametrize("value", [pd.DataFrame({"a": [1]}), {1: "a"}, {"a"}, np.array([object()])])
-def test_jsonable_unsupported(value: object) -> None:
-    with pytest.raises(UnsupportedValueError):
-        to_jsonable(value)

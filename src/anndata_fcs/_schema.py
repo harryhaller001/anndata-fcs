@@ -9,7 +9,7 @@ Layout produced by :func:`anndata_fcs.read_fcs`:
 * ``uns["fcs"]``: global keywords and file level metadata (see :class:`anndata_fcs._types.FCSMetadata`). Keywords keep
   the names parsed by FlowIO (lower case, without ``$``).
 
-AnnData specific information (``obs``, ``obs_names``, extra ``var`` columns and ``uns``) is embedded into the FCS
+AnnData specific information (``obs``, ``obs_names`` and ``var`` columns other than keywords) is embedded into the FCS
 TEXT segment as JSON encoded keywords using the :data:`KEYWORD_PREFIX` namespace.
 """
 
@@ -39,7 +39,6 @@ KW_SCHEMA: str = KEYWORD_PREFIX + "schema"
 KW_INDEX_CHANNEL: str = KEYWORD_PREFIX + "index_channel"
 KW_OBS: str = KEYWORD_PREFIX + "obs"
 KW_VAR: str = KEYWORD_PREFIX + "var"
-KW_UNS: str = KEYWORD_PREFIX + "uns"
 
 STRUCTURAL_KEYWORDS: frozenset[str] = frozenset(FCS_STANDARD_REQUIRED_KEYWORDS)
 """Global keywords describing the binary layout. They are regenerated on write and never copied."""

@@ -215,7 +215,8 @@ def test_write_fcs_unsupported_metadata(adata: AnnData) -> None:
     with pytest.warns(FCSConversionWarning) as record:
         fdata = to_flowdata(adata)
     messages = " ".join(str(warning.message) for warning in record)
-    assert "time" in messages and "uns['frame']" in messages
+    assert "obs columns with unsupported dtypes are dropped: time" in messages
+    assert "uns entries other than uns['fcs'] cannot be stored in FCS files and are dropped: frame" in messages
 
     restored = read_fcs(fdata)
     assert "time" not in restored.obs.columns

@@ -21,7 +21,8 @@ anndata-fcs
    :alt: PyPI - Python Version
 
 
-Converting between FCS files and ``AnnData`` objects without losing metadata. FCS keywords are stored in ``uns``.
+Converting between FCS files and ``AnnData`` objects without losing metadata. Per-channel FCS keywords are stored as
+``var`` columns (``$PnS``, ``$PnR``, ...) and global keywords in ``uns["fcs"]``.
 For reading and writing FCS files, ``anndata-fcs`` uses the ``flowio`` package.
 
 .. code-block:: python

@@ -27,12 +27,9 @@ from anndata_fcs._keywords import (
     unique_channel_names,
 )
 from anndata_fcs._payload import (
-    UnsupportedValueError,
     decode_frame,
     dumps,
     encode_frame,
-    from_jsonable,
-    to_jsonable,
 )
 from anndata_fcs._schema import (
     FCS_DELIMITER,
@@ -40,7 +37,6 @@ from anndata_fcs._schema import (
     KW_INDEX_CHANNEL,
     KW_OBS,
     KW_SCHEMA,
-    KW_UNS,
     KW_VAR,
     MAX_EXACT_FLOAT32_INT,
     MAX_TEXT_BYTES,
@@ -84,11 +80,10 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool, owns_events: boo
         channel_names = unique_channel_names(channel_names)
     var = _channel_frame(split.channels, channel_names)
     obs: pd.DataFrame | None = None
-    uns: dict[str, Any] = {}
 
     index_position: int | None = None
     if KW_SCHEMA in split.payload:
-        index_position, var, obs, uns = _decode_payload(split.payload, events, var)
+        index_position, var, obs = _decode_payload(split.payload, events, var)
 
     # Every array is created at most once: removing the index channel copies the event data
     def without_index(matrix: np.ndarray, *, copy: bool) -> np.ndarray:
@@ -111,11 +106,10 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool, owns_events: boo
     if fdata.name is not None:
         uns_fcs["filename"] = str(fdata.name)
 
-    uns[UNS_KEY] = uns_fcs
     if obs is None:
         obs = pd.DataFrame(index=_string_index(range(events.shape[0])))
 
-    return AnnData(X=X, obs=obs, var=var, uns=uns, layers=layers)
+    return AnnData(X=X, obs=obs, var=var, uns={UNS_KEY: uns_fcs}, layers=layers)
 
 
 def _channel_frame(channels: list[dict[str, str]], channel_names: list[str]) -> pd.DataFrame:
@@ -151,12 +145,12 @@ def _decode_payload(
     payload: Mapping[str, str],
     events: np.ndarray,
     var: pd.DataFrame,
-) -> tuple[int | None, pd.DataFrame, pd.DataFrame | None, dict[str, Any]]:
+) -> tuple[int | None, pd.DataFrame, pd.DataFrame | None]:
     """Restore AnnData specific information written by :func:`anndata_fcs.write_fcs`.
 
     Returns:
         Position of the synthetic event index channel (to be removed from the event data, ``None`` if absent), ``var``
-        without the index channel, ``obs`` (``None`` for default ``obs``) and ``uns``.
+        without the index channel and ``obs`` (``None`` for default ``obs``).
     """
     obs: pd.DataFrame | None = None
     schema_version = int(payload[KW_SCHEMA])
@@ -205,9 +199,7 @@ def _decode_payload(
         extra_var = decode_frame(json.loads(payload[KW_VAR])).reindex(var.index)
         var = pd.concat([var, extra_var], axis=1)
 
-    uns: dict[str, Any] = from_jsonable(json.loads(payload[KW_UNS])) if KW_UNS in payload else {}
-
-    return position, var, obs, uns
+    return position, var, obs
 
 
 def _parse_event_index(values: np.ndarray, index_channel: str) -> np.ndarray | None:
@@ -425,6 +417,13 @@ def _check_unsupported_slots(adata: AnnData) -> None:
     if len(dropped) > 0:
         warn(f"{', '.join(dropped)} cannot be stored in FCS files and are dropped.")
 
+    # Only uns["fcs"] is written, as keywords
+    other_uns = [str(key) for key in adata.uns.keys() if key != UNS_KEY]
+    if len(other_uns) > 0:
+        warn(
+            f"uns entries other than uns['{UNS_KEY}'] cannot be stored in FCS files and are dropped: {', '.join(other_uns)}"
+        )
+
 
 def _row_blocks(X: Any) -> Iterator[np.ndarray]:
     """Dense blocks of at most :data:`_CHUNK_ROWS` rows of a dense, sparse (CSR/CSC, as in AnnData) or backed matrix."""
@@ -616,16 +615,5 @@ def _encode_payload(
             warn(f"var columns with unsupported dtypes are dropped: {', '.join(skipped)}")
         if len(var_frame["columns"]) > 0:
             payload[KW_VAR] = dumps(var_frame)
-
-    uns: dict[str, Any] = {}
-    for key, value in adata.uns.items():
-        if key == UNS_KEY:
-            continue
-        try:
-            uns[str(key)] = to_jsonable(value)
-        except UnsupportedValueError as error:
-            warn(f"uns['{key}'] cannot be stored in FCS files and is dropped: {error}")
-    if len(uns) > 0:
-        payload[KW_UNS] = dumps(uns)
 
     return payload

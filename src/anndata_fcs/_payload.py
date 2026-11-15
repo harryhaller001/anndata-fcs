@@ -1,4 +1,4 @@
-"""JSON encoding of AnnData specific information stored in FCS TEXT keywords.
+"""JSON encoding of ``obs`` and ``var`` columns stored in FCS TEXT keywords.
 
 The encoding is exact for numeric, boolean, string and categorical columns: floats are serialised with ``repr``
 precision and dtypes are stored alongside the values.
@@ -10,8 +10,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-
-_NDARRAY_TAG = "__anndata_fcs_ndarray__"
 
 
 class UnsupportedValueError(TypeError):
@@ -129,59 +127,3 @@ def decode_frame(spec: Mapping[str, Any]) -> pd.DataFrame:
     index = pd.Index(spec["index"], dtype=object)
     data = {name: decode_series(column, index=index) for name, column in spec["columns"]}
     return pd.DataFrame(data, index=index)
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-# Unstructured data (uns)
-# ---------------------------------------------------------------------------------------------------------------------
-
-
-def to_jsonable(obj: Any) -> Any:
-    """Convert nested ``uns`` values to JSON compatible objects.
-
-    Supported: ``None``, ``bool``, ``int``, ``float``, ``str``, NumPy scalars and arrays (numeric, boolean or string),
-    and dictionaries with string keys and lists/tuples of supported values. Tuples are encoded as JSON arrays, so they
-    are restored as lists.
-
-    Raises:
-        UnsupportedValueError: If a value is not supported.
-    """
-    if obj is None or isinstance(obj, bool | int | float | str):
-        return obj
-
-    if isinstance(obj, np.generic):
-        if obj.dtype.kind not in "biufU":
-            raise UnsupportedValueError(f"Unsupported NumPy scalar of dtype '{obj.dtype}'.")
-        return obj.item()
-
-    if isinstance(obj, np.ndarray):
-        if obj.dtype.kind == "O":
-            if not all(isinstance(value, str) for value in obj.flat):
-                raise UnsupportedValueError("Object arrays are only supported if they contain strings.")
-        elif obj.dtype.kind not in "biufU":
-            raise UnsupportedValueError(f"Unsupported NumPy array of dtype '{obj.dtype}'.")
-        return {_NDARRAY_TAG: obj.tolist(), "dtype": obj.dtype.str, "shape": list(obj.shape)}
-
-    if isinstance(obj, Mapping):
-        if not all(isinstance(key, str) for key in obj):
-            raise UnsupportedValueError("Only dictionaries with string keys are supported.")
-        return {key: to_jsonable(value) for key, value in obj.items()}
-
-    if isinstance(obj, list | tuple):
-        return [to_jsonable(value) for value in obj]
-
-    raise UnsupportedValueError(f"Unsupported type '{type(obj).__name__}'.")
-
-
-def from_jsonable(obj: Any) -> Any:
-    """Inverse of :func:`to_jsonable`."""
-    if isinstance(obj, dict):
-        if _NDARRAY_TAG in obj:
-            array = np.array(obj[_NDARRAY_TAG], dtype=np.dtype(obj["dtype"]))
-            return array.reshape(obj["shape"])
-        return {key: from_jsonable(value) for key, value in obj.items()}
-
-    if isinstance(obj, list):
-        return [from_jsonable(value) for value in obj]
-
-    return obj

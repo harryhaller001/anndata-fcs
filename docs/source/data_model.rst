@@ -78,9 +78,6 @@ AnnData to FCS
      - JSON encoded in the ``ANNDATA_FCS_OBS`` keyword (``store_obs=True``).
    * - Other ``var`` columns
      - JSON encoded in the ``ANNDATA_FCS_VAR`` keyword.
-   * - Other ``uns`` entries
-     - JSON encoded in the ``ANNDATA_FCS_UNS`` keyword. Supported: numbers, strings, booleans, ``None``, lists,
-       dictionaries with string keys, NumPy scalars and arrays.
    * - Position of each observation
      - Synthetic ``barcode_rank`` channel (``index_channel``). It allows restoring ``obs`` for files containing a
        subset of the events, e.g. events exported from a gate.
@@ -89,6 +86,7 @@ AnnData to FCS
 
 Only ``X`` is written. ``layers["preprocessed"]`` is not written, since it is computed from ``X`` and the keywords.
 ``raw`` is not written either. For scanpy objects holding the counts in ``raw``, write ``adata.raw.to_adata()``.
+``uns`` entries other than ``uns["fcs"]`` are not written.
 
 Any information that is lost when writing is reported by an :class:`anndata_fcs.FCSConversionWarning`. To raise an
 error instead, turn the warning into an exception:

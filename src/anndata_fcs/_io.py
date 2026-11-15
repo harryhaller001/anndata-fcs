@@ -27,8 +27,8 @@ def read_fcs(
       ``$``). Values are raw strings. Keywords describing the binary layout (offsets, ``$DATATYPE``, ``$PnB``, ...) are
       not stored, since they are regenerated when writing.
     * The ANALYSIS segment and the FCS version are stored in ``uns["fcs"]``.
-    * If the file was written by :func:`write_fcs`, ``obs``, ``obs_names``, additional ``var`` columns and ``uns``
-      are restored and the synthetic event index channel is removed from the event data. If ``obs`` was not stored,
+    * If the file was written by :func:`write_fcs`, ``obs``, ``obs_names`` and additional ``var`` columns are
+      restored and the synthetic event index channel is removed from the event data. If ``obs`` was not stored,
       ``obs_names`` are taken from the event index channel, i.e. the positions of the events in the written AnnData
       object.
 
@@ -77,17 +77,16 @@ def write_fcs(
     * ``uns["fcs"]["text"]`` as global keywords. ``$SPILLOVER`` and ``$SPILL`` are restricted to the written
       channels. ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time,
       since the file is a derived copy of the data.
-    * ``obs`` (including ``obs_names``), other ``var`` columns and JSON serialisable ``uns`` entries as JSON encoded
-      keywords in the ``ANNDATA_FCS_*`` namespace, which are restored by :func:`read_fcs`. Tuples in ``uns`` are
-      restored as lists.
+    * ``obs`` (including ``obs_names``) and other ``var`` columns as JSON encoded keywords in the ``ANNDATA_FCS_*``
+      namespace, which are restored by :func:`read_fcs`.
 
     Only ``X`` is written. To write ``raw`` (e.g. counts of a scanpy object), use
     ``write_fcs(adata.raw.to_adata(), ...)``.
 
     Information that cannot be stored (``raw``, ``layers`` except ``layers["preprocessed"]``, ``obsm``, ``obsp``,
-    ``varm``, ``varp``, unsupported column dtypes, non serialisable ``uns`` entries, keywords that cannot be written,
-    float precision beyond float32) triggers a :class:`FCSConversionWarning`. To raise an error instead, turn the
-    warning into an exception:
+    ``varm``, ``varp``, ``uns`` entries other than ``uns["fcs"]``, unsupported column dtypes, keywords that cannot be
+    written, float precision beyond float32) triggers a :class:`FCSConversionWarning`. To raise an error instead, turn
+    the warning into an exception:
 
     .. code-block:: python
 

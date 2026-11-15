@@ -107,9 +107,7 @@ def test_anndata_roundtrip(adata_annotated: AnnData, index_channel: str | None) 
     # Keywords of the synthetic index channel are removed with the channel
     assert "barcode_rank" not in restored.var_names
     assert not restored.var["$PnR"].isna().any()
-    assert restored.uns["params"]["resolution"] == 0.5
-    assert restored.uns["params"]["markers"] == ["CD3", "CD19"]
-    np.testing.assert_array_equal(restored.uns["params"]["matrix"], np.eye(2))
+    assert list(restored.uns.keys()) == ["fcs"]
 
 
 def test_anndata_roundtrip_twice(adata_annotated: AnnData) -> None:

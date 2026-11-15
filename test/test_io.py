@@ -5,6 +5,7 @@ from datetime import datetime
 
 import flowio
 import numpy as np
+import pandas as pd
 import pytest
 from anndata import AnnData
 
@@ -61,7 +62,7 @@ def test_warnings_point_to_caller(adata: AnnData) -> None:
         assert record[0].filename == __file__
 
     adata.obsm["X_pca"] = np.zeros((adata.n_obs, 2))
-    adata.uns["unsupported"] = object()
+    adata.obs["time"] = pd.Timestamp("2020-01-01")
     adata.uns["fcs"] = {"text": {"com": ""}}
     with pytest.warns(FCSConversionWarning) as record:
         write_fcs(adata, io.BytesIO())
