@@ -1,8 +1,3 @@
-"""Classification of FCS TEXT keywords and construction of FlowIO metadata dictionaries.
-
-All functions in this module operate on plain dictionaries and do not depend on AnnData objects.
-"""
-
 import math
 import warnings
 from collections.abc import Mapping, Sequence
@@ -248,10 +243,6 @@ def _escape_delimiter(key: str) -> str:
     """Double the delimiter in keywords. FlowIO only does this for values."""
     return key.replace(FCS_DELIMITER, FCS_DELIMITER * 2)
 
-
-# ---------------------------------------------------------------------------------------------------------------------
-# Keyword values defined by the FCS 3.1 standard
-# ---------------------------------------------------------------------------------------------------------------------
 
 _MONTHS: tuple[str, ...] = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 

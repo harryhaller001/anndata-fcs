@@ -8,7 +8,7 @@
 
 Converting between FCS files and `AnnData` objects without losing metadata. Per-channel FCS keywords are stored as `var`
 columns (`$PnS`, `$PnR`, ...) and global keywords in `uns["fcs"]`, and `obs` and `var` of `AnnData` objects are embedded
-in FCS files, so both directions round trip. For reading and writing FCS files, `anndata-fcs` uses the `flowio` package.
+in FCS files. For reading and writing FCS files, `anndata-fcs` uses the `flowio` package.
 
 ### Get started
 
@@ -70,7 +70,8 @@ make typing
 
 - `flowio>=1.4` (Documentation: https://flowio.readthedocs.io/en/latest)
 - `anndata` (Documentation: https://anndata.readthedocs.io/en/latest)
-- `numpy`, `pandas`
+- `numpy`
+- `pandas`
 
 
 ### License

@@ -1,9 +1,3 @@
-"""JSON encoding of ``obs`` and ``var`` columns stored in FCS TEXT keywords.
-
-The encoding is exact for numeric, boolean, string and categorical columns: floats are serialised with ``repr``
-precision and dtypes are stored alongside the values.
-"""
-
 import json
 from collections.abc import Mapping
 from typing import Any
@@ -25,11 +19,6 @@ def dumps(obj: Any) -> str:
     """
     text = json.dumps(obj, ensure_ascii=True, allow_nan=True, separators=(",", ":"))
     return text.replace("/", "\\/").replace("$", "\\u0024")
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-# Data frames
-# ---------------------------------------------------------------------------------------------------------------------
 
 
 def _nullable_values(series: pd.Series) -> list[Any]:
