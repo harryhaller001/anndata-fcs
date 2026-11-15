@@ -1,12 +1,13 @@
 import io
 import os
+from datetime import datetime
 
 import flowio
 import numpy as np
 import pytest
 from anndata import AnnData
 
-from anndata_fcs import read_fcs, write_fcs
+from anndata_fcs import _convert, read_fcs, write_fcs
 from test.conftest import LSR_II_FILENAME
 
 
@@ -33,7 +34,9 @@ def test_read_fcs_flowio_kwargs(int_fcs_bytes: bytes) -> None:
     assert adata.uns["fcs"]["preprocessed"] is True
 
 
-def test_write_fcs(adata: AnnData, tmp_path: os.PathLike) -> None:
+def test_write_fcs(adata: AnnData, tmp_path: os.PathLike, monkeypatch: pytest.MonkeyPatch) -> None:
+    # $LAST_MODIFIED is the only non-deterministic keyword
+    monkeypatch.setattr(_convert, "_now", lambda: datetime(2026, 1, 2, 3, 4, 5))
     path = os.path.join(tmp_path, "out.fcs")
     write_fcs(adata, path)
 

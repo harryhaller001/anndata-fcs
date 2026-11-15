@@ -23,7 +23,8 @@ FCS to AnnData
      - FCS
    * - ``X``
      - Event data in the stored data type (``float32`` for ``$DATATYPE/F``, ``uint`` for ``I``). With
-       ``preprocess=True``, gain (``$PnG``), log (``$PnE``) and time (``$TIMESTEP``) scaling is applied.
+       ``preprocess=True``, gain (``$PnG``), log (``$PnE``) and time (``$TIMESTEP``) scaling is applied, and
+       ``pne``, ``png`` and ``pnr`` are updated to describe the linear scale values.
    * - ``var_names``
      - Channel names (``$PnN``).
    * - ``var["pn<suffix>"]``
@@ -61,7 +62,8 @@ AnnData to FCS
      - ``$PnN`` and per-channel keywords. Use ``pns_key`` to take marker labels (``$PnS``) from another column.
        ``$PnR`` defaults to the maximum of 262144 and the channel maximum.
    * - ``uns["fcs"]["text"]``
-     - Global keywords.
+     - Global keywords. ``$SPILLOVER`` is restricted to channels present in ``var_names``, since it refers to
+       channels by ``$PnN``. ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time.
    * - ``obs``, ``obs_names``
      - JSON encoded in the ``ANNDATA_FCS_OBS`` keyword (``store_obs=True``).
    * - Other ``var`` columns

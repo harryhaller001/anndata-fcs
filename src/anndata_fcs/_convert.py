@@ -2,6 +2,7 @@ import io
 import math
 import warnings
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 import flowio
@@ -12,7 +13,17 @@ from anndata.utils import make_index_unique
 from scipy import sparse
 
 from anndata_fcs._exceptions import FCSConversionWarning
-from anndata_fcs._keywords import build_metadata, escape_key, split_text, unescape_key
+from anndata_fcs._keywords import (
+    build_metadata,
+    check_spillover,
+    escape_key,
+    format_timestamp,
+    linear_range,
+    normalize_keyword,
+    parse_pne,
+    split_text,
+    unescape_key,
+)
 from anndata_fcs._payload import (
     UnsupportedValueError,
     decode_frame,
@@ -64,7 +75,7 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool = False) -> AnnDa
     Args:
         fdata: FlowData instance to convert.
         preprocess: If ``True``, apply gain (``$PnG``), log (``$PnE``) and time (``$TIMESTEP``) scaling to the event
-            data. The ``pne``/``png`` columns and the ``timestep`` keyword are updated, so the metadata keeps
+            data. The ``pne``/``png``/``pnr`` columns and the ``timestep`` keyword are updated, so the metadata keeps
             describing ``X`` correctly. If ``False`` (default), ``X`` holds the event data as stored in the file.
 
     Returns:
@@ -80,6 +91,13 @@ def fcs_to_anndata(fdata: flowio.FlowData, *, preprocess: bool = False) -> AnnDa
     split = split_text(fdata.text, n_channels)
 
     if preprocess:
+        # Log scaled channels hold linear scale values after preprocessing, so $PnR is the upper bound of the scale
+        # (same as when writing log scaled channels, see _linearize_log_channels).
+        for channel in split.channels.values():
+            if "e" in channel and "r" in channel:
+                decades, log0 = parse_pne(channel["e"])
+                if decades != 0:
+                    channel["r"] = linear_range(decades, log0)
         X = np.asarray(fdata.as_array(preprocess=True))
     else:
         X = np.array(fdata.events).reshape(-1, n_channels)
@@ -222,7 +240,9 @@ def anndata_to_fcs(
 
     * ``X`` as event data (32-bit float, the only data type supported by FlowIO) with ``var_names`` as ``$PnN``.
     * ``var`` columns named ``pn<suffix>`` as per-channel keywords (e.g. ``pns`` -> ``$PnS``).
-    * ``uns["fcs"]["text"]`` as global keywords.
+    * ``uns["fcs"]["text"]`` as global keywords. ``$SPILLOVER`` is restricted to the written channels.
+      ``$ORIGINALITY`` is set to ``DataModified`` and ``$LAST_MODIFIED`` to the current time, since the file is a
+      derived copy of the data.
     * ``obs`` (including ``obs_names``), all other ``var`` columns and JSON serialisable ``uns`` entries as JSON encoded
       keywords in the ``ANNDATA_FCS_*`` namespace, which are restored by :func:`fcs_to_anndata`.
 
@@ -284,6 +304,12 @@ def _anndata_to_fcs_bytes(
         raise ValueError("var_names must be unique to be used as FCS channel names ($PnN).")
     if any(name == "" for name in channel_names):
         raise ValueError("var_names must not be empty strings.")
+    with_comma = [name for name in channel_names + ([index_channel] if index_channel else []) if "," in name]
+    if len(with_comma) > 0:
+        lossy(
+            "FCS 3.1 does not allow commas in channel names ($PnN), since $SPILLOVER uses comma separated channel "
+            f"names: {', '.join(with_comma)}"
+        )
 
     if pns_key is not None and pns_key not in var.columns:
         raise KeyError(f"Column '{pns_key}' not found in var.")
@@ -333,10 +359,23 @@ def _anndata_to_fcs_bytes(
     # Global keywords
     uns_fcs: Mapping[str, Any] = adata.uns.get(UNS_KEY, {})
     global_keywords = {
-        unescape_key(str(key)): str(value)
-        for key, value in dict(uns_fcs.get("text", {})).items()
-        if not str(key).lower().startswith(KEYWORD_PREFIX)
+        normalize_keyword(unescape_key(str(key))): str(value) for key, value in dict(uns_fcs.get("text", {})).items()
     }
+    global_keywords = {key: value for key, value in global_keywords.items() if not key.startswith(KEYWORD_PREFIX)}
+
+    if "spillover" in global_keywords:
+        spillover, messages = check_spillover(global_keywords["spillover"], channel_names)
+        for message in messages:
+            lossy(message)
+        if spillover is None:
+            del global_keywords["spillover"]
+        else:
+            global_keywords["spillover"] = spillover
+
+    # The written file is a derived copy: event data is re-encoded as float32 (and possibly linearised or extended by
+    # the index channel). FCS 3.1 uses $ORIGINALITY and $LAST_MODIFIED to mark such copies.
+    global_keywords["originality"] = "DataModified"
+    global_keywords["last_modified"] = format_timestamp(_now())
     if len(uns_fcs.get("analysis", {})) > 0:
         lossy("The ANALYSIS segment in uns['fcs']['analysis'] cannot be written by FlowIO and is dropped.")
 
@@ -364,6 +403,11 @@ def _anndata_to_fcs_bytes(
     return handle.getvalue()
 
 
+def _now() -> datetime:
+    """Time stamp for ``$LAST_MODIFIED`` (local time, like ``$DATE``/``$BTIM``)."""
+    return datetime.now()
+
+
 def _as_dataframe(frame: object, name: str) -> pd.DataFrame:
     if not isinstance(frame, pd.DataFrame):
         raise TypeError(f"{name} must be a pandas DataFrame. Load lazy AnnData objects into memory first.")
@@ -371,7 +415,16 @@ def _as_dataframe(frame: object, name: str) -> pd.DataFrame:
 
 
 def _is_keyword_column(column: object) -> bool:
-    return isinstance(column, str) and column.startswith(VAR_PREFIX) and len(column) > len(VAR_PREFIX)
+    """Whether a var column holds a per-channel keyword (``pn<suffix>`` -> ``$P<n><suffix>``).
+
+    The suffix must not start with a digit, since ``$P<n><suffix>`` would be read back as a keyword of another channel.
+    """
+    return (
+        isinstance(column, str)
+        and column.startswith(VAR_PREFIX)
+        and len(column) > len(VAR_PREFIX)
+        and not column[len(VAR_PREFIX)].isdigit()
+    )
 
 
 def _is_missing(value: object) -> bool:
@@ -422,17 +475,15 @@ def _linearize_log_channels(X: np.ndarray, channels: list[dict[str, str]]) -> np
     for position, channel in enumerate(channels):
         if "e" not in channel:
             continue
-        decades, log0 = (float(value) for value in channel["e"].split(","))
+        decades, log0 = parse_pne(channel["e"])
         if decades == 0:
             continue
-        if log0 == 0:
-            log0 = 1.0
         if "r" not in channel:
             raise ValueError(f"Channel {position + 1} is stored on log scale but has no range ($PnR).")
 
         X[:, position] = (10 ** (decades * X[:, position] / float(channel["r"]))) * log0
         channel["e"] = "0,0"
-        channel["r"] = str(math.ceil(10**decades * log0))
+        channel["r"] = linear_range(decades, log0)
     return X
 
 

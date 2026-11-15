@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from anndata import AnnData
 
-from anndata_fcs import FCSConversionWarning, anndata_to_fcs, fcs_to_anndata
+from anndata_fcs import FCSConversionWarning, anndata_to_fcs, fcs_to_anndata, write_fcs
 from anndata_fcs._schema import KW_OBS, KW_SCHEMA, STRUCTURAL_KEYWORDS
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -63,6 +63,9 @@ def test_fcs_to_anndata_preprocess(int_fdata: flowio.FlowData) -> None:
     assert adata.uns["fcs"]["preprocessed"] is True
     assert (adata.var["pne"] == "0,0").all()
     assert (adata.var["png"] == "1.0").all()
+    # $PnR of the log scaled channel ($PnE/4,1/) is the upper bound of the linear scale values
+    assert adata.var.loc["FL1-H", "pnr"] == "10000"
+    assert adata.var.loc["FSC-A", "pnr"] == "1024"
     assert "timestep" not in adata.uns["fcs"]["text"]
     assert adata.uns["fcs"]["source"]["timestep"] == "0.01"
 
@@ -200,3 +203,58 @@ def test_anndata_to_fcs_store_obs(adata_annotated: AnnData) -> None:
     restored = fcs_to_anndata(fdata)
     assert list(restored.obs_names) == [str(i) for i in range(adata_annotated.n_obs)]
     assert len(restored.obs.columns) == 0
+
+
+def test_anndata_to_fcs_originality(int_fdata: flowio.FlowData) -> None:
+    """Written files are derived copies, which FCS 3.1 marks with $ORIGINALITY and $LAST_MODIFIED."""
+    adata = fcs_to_anndata(int_fdata)
+    adata.var["pne"] = "0,0"
+    del adata.uns["fcs"]["analysis"]
+    adata.uns["fcs"]["text"]["originality"] = "Original"
+    adata.uns["fcs"]["text"]["last_modified"] = "01-JAN-2000 00:00:00.00"
+
+    fdata = anndata_to_fcs(adata)
+    assert fdata.text["originality"] == "DataModified"
+    assert fdata.text["last_modified"] != "01-JAN-2000 00:00:00.00"
+
+    handle = io.BytesIO()
+    write_fcs(adata, handle)
+    assert b"$ORIGINALITY/DataModified/" in handle.getvalue()
+
+
+def test_anndata_to_fcs_spillover(lsr_ii_fdata: flowio.FlowData) -> None:
+    adata = fcs_to_anndata(lsr_ii_fdata)
+    spillover = "2,FITC-A,AmCyan-A,1,0.02,0.1,1"
+    adata.uns["fcs"]["text"]["spillover"] = spillover
+
+    assert anndata_to_fcs(adata).text["spillover"] == spillover
+
+    # $SPILLOVER refers to $PnN values, so removed channels are removed from the matrix
+    subset = adata[:, [name for name in adata.var_names if name != "AmCyan-A"]].copy()
+    with pytest.warns(FCSConversionWarning, match="AmCyan-A"):
+        fdata = anndata_to_fcs(subset)
+    assert fdata.text["spillover"] == "1,FITC-A,1"
+    with pytest.raises(ValueError, match="AmCyan-A"):
+        anndata_to_fcs(subset, strict=True)
+
+
+def test_anndata_to_fcs_comma_in_channel_name() -> None:
+    adata = AnnData(np.zeros((2, 2), dtype=np.float32))
+    adata.var_names = ["CD3,CD4", "B"]
+    with pytest.warns(FCSConversionWarning, match="commas"):
+        fdata = anndata_to_fcs(adata)
+    assert fdata.pnn_labels[0] == "CD3,CD4"
+    with pytest.raises(ValueError, match="commas"):
+        anndata_to_fcs(adata, strict=True)
+
+
+def test_anndata_to_fcs_keyword_column_with_digit() -> None:
+    """Columns like 'pn1x' would be written as $P<n>1X and read back as a keyword of another channel."""
+    adata = AnnData(np.zeros((2, 2), dtype=np.float32))
+    adata.var["pn1x"] = ["a", "b"]
+
+    fdata = anndata_to_fcs(adata, index_channel=None)
+    assert not any(key.endswith("1x") for key in fdata.text)
+
+    restored = fcs_to_anndata(fdata)
+    assert list(restored.var["pn1x"]) == ["a", "b"]

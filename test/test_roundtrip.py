@@ -21,16 +21,24 @@ from anndata import AnnData, read_h5ad
 from anndata_fcs import FCSConversionWarning, anndata_to_fcs, fcs_to_anndata, read_fcs, write_fcs
 from anndata_fcs._schema import KEYWORD_PREFIX, STRUCTURAL_KEYWORDS
 
+# Set on every write to mark the file as a modified copy (FCS 3.1)
+MODIFICATION_KEYWORDS = frozenset({"originality", "last_modified"})
+
 
 def _comparable_text(fdata: flowio.FlowData) -> dict[str, str]:
-    """Keywords expected to be identical after a round trip ($PnB is regenerated)."""
+    """Keywords expected to be identical after a round trip ($PnB and modification keywords are regenerated)."""
     return {
         key: value
         for key, value in fdata.text.items()
         if key not in STRUCTURAL_KEYWORDS
+        and key not in MODIFICATION_KEYWORDS
         and not key.startswith(KEYWORD_PREFIX)
         and not (key.startswith("p") and key.endswith("b") and key[1:-1].isdigit())
     }
+
+
+def _without_modification(text: dict[str, str]) -> dict[str, str]:
+    return {key: value for key, value in text.items() if key not in MODIFICATION_KEYWORDS}
 
 
 @contextmanager
@@ -74,6 +82,8 @@ def test_fcs_roundtrip_float(lsr_ii_fdata: flowio.FlowData) -> None:
     np.testing.assert_array_equal(fdata.as_array(preprocess=False), lsr_ii_fdata.as_array(preprocess=False))
     assert fdata.pnn_labels == lsr_ii_fdata.pnn_labels
     assert _comparable_text(fdata) == _comparable_text(lsr_ii_fdata)
+    assert fdata.text["originality"] == "DataModified"
+    assert re.fullmatch(r"\d{2}-[A-Z]{3}-\d{4} \d{2}:\d{2}:\d{2}\.\d{2}", fdata.text["last_modified"])
 
 
 def test_fcs_roundtrip_int(int_fdata: flowio.FlowData) -> None:
@@ -125,7 +135,7 @@ def test_anndata_roundtrip_twice(adata_annotated: AnnData) -> None:
     twice = fcs_to_anndata(anndata_to_fcs(once))
 
     _assert_same_anndata(twice, once)
-    assert twice.uns["fcs"]["text"] == once.uns["fcs"]["text"]
+    assert _without_modification(twice.uns["fcs"]["text"]) == _without_modification(once.uns["fcs"]["text"])
 
 
 def test_anndata_roundtrip_file(adata_annotated: AnnData, tmp_path: os.PathLike) -> None:
@@ -196,7 +206,7 @@ def test_h5ad_roundtrip(
         via_h5ad = _write_read(from_h5ad, index_channel=None)
 
     np.testing.assert_array_equal(via_h5ad.as_array(preprocess=False), direct.as_array(preprocess=False))
-    assert via_h5ad.text == direct.text
+    assert _without_modification(via_h5ad.text) == _without_modification(direct.text)
 
 
 def test_h5ad_roundtrip_anndata(adata_annotated: AnnData, tmp_path: os.PathLike) -> None:
