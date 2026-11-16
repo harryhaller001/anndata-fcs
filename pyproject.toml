@@ -24,9 +24,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
-
 dependencies = [ "anndata", "flowio>=1.4,<2", "numpy", "pandas" ]
-
 optional-dependencies.docs = [
     "ipython",
     "nbsphinx",
@@ -35,7 +33,6 @@ optional-dependencies.docs = [
     "sphinx-autodoc-typehints",
     "sphinx-book-theme",
 ]
-
 optional-dependencies.test = [
     "ipykernel",
     "ipython",
@@ -69,32 +66,32 @@ indent = 4
 keep_full_version = false
 max_supported_python = "3.14"
 
+[tool.ty]
+src.include = [ "docs", "src" ]
+src.exclude = [ "**/*.ipynb" ]
+
 [tool.pytest]
 ini_options.minversion = "7.0"
-ini_options.log_format = "%(asctime)s %(levelname)s %(message)s"
-ini_options.log_date_format = "%Y-%m-%d %H:%M:%S"
-ini_options.log_level = "INFO"
-ini_options.python_files = "test_*.py"
 ini_options.testpaths = [ "test" ]
-ini_options.xfail_strict = true
-ini_options.filterwarnings = [
-    "error::anndata_fcs.FCSConversionWarning",
-    "ignore:The 'future.infer_string' option is deprecated:DeprecationWarning",
-]
+ini_options.python_files = "test_*.py"
 ini_options.addopts = [
     "--import-mode=importlib",
     "--cov=src/anndata_fcs",
     "--cov-report=html:coverage_report",
     "--cov-report=term",
 ]
+ini_options.xfail_strict = true
+ini_options.filterwarnings = [
+    "error::anndata_fcs.FCSConversionWarning",
+    "ignore:The 'future.infer_string' option is deprecated:DeprecationWarning",
+]
+ini_options.log_format = "%(asctime)s %(levelname)s %(message)s"
+ini_options.log_date_format = "%Y-%m-%d %H:%M:%S"
+ini_options.log_level = "INFO"
 
 [tool.coverage]
-run.omit = [ "*/test/*" ]
 run.source = [ "src/anndata_fcs" ]
+run.omit = [ "*/test/*" ]
 report.exclude_lines = [ "raise" ]
 report.ignore_errors = true
 html.directory = "coverage_report"
-
-[tool.ty]
-src.include = [ "src", "docs" ]
-src.exclude = [ "**/*.ipynb" ]
