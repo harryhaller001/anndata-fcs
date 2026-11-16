@@ -3,12 +3,9 @@ name: Documentation (python 3.14)
 # CAVE: this workflow published sphinx docs to github pages, which are public by default!
 
 on:
-    # push:
-    #     branches: [main]
 
-    # release:
-    #     types: [published]
-
+    release:
+        types: [published]
     workflow_dispatch:
 
 concurrency:
@@ -17,6 +14,7 @@ concurrency:
 
 jobs:
     docs:
+        # Build docs
         runs-on: ubuntu-latest
         steps:
         -   uses: actions/checkout@v7
